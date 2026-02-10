@@ -120,6 +120,19 @@ const PROVIDERS = {
         return r === '200';
       } catch { return false; }
     }
+  },
+  gemini: {
+    name: 'Google Gemini',
+    envKey: 'GOOGLE_API_KEY',
+    configFile: '/etc/config/gemini.json',
+    testFn: (apiKey) => {
+      try {
+        const r = execSync(`curl -s -o /dev/null -w '%{http_code}' \
+          "https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.replace(/'/g, "'\\''")}"`,
+          { timeout: 15000, stdio: 'pipe' }).toString().trim();
+        return r === '200';
+      } catch { return false; }
+    }
   }
 };
 
@@ -238,7 +251,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   <div class="step" id="step2"><div class="card">
     <h2>Buoc 2: Chon nha cung cap AI</h2>
     <p>Chon nha cung cap LLM ma ban muon su dung</p>
-    <div class="providers">
+    <div class="providers" style="grid-template-columns:1fr 1fr 1fr">
       <div class="provider" data-provider="anthropic" onclick="selectProvider(this)">
         <div class="icon">&#x1f7e0;</div><div class="name">Anthropic</div>
         <div style="color:#94a3b8;font-size:12px;margin-top:4px">Claude</div>
@@ -246,6 +259,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <div class="provider" data-provider="openai" onclick="selectProvider(this)">
         <div class="icon">&#x1f7e2;</div><div class="name">OpenAI</div>
         <div style="color:#94a3b8;font-size:12px;margin-top:4px">GPT</div>
+      </div>
+      <div class="provider" data-provider="gemini" onclick="selectProvider(this)">
+        <div class="icon">&#x1f535;</div><div class="name">Google</div>
+        <div style="color:#94a3b8;font-size:12px;margin-top:4px">Gemini</div>
       </div>
     </div>
     <div id="modelSection" style="display:none;margin-top:20px">
@@ -333,7 +350,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 <script>
 let selectedProvider=null,selectedModel='',keyVerified=false,configuredDomain='';
-const names={anthropic:'Anthropic',openai:'OpenAI'};
+const names={anthropic:'Anthropic',openai:'OpenAI',gemini:'Google Gemini'};
 const models={
   anthropic:[
     {id:'anthropic/claude-opus-4-5',name:'Claude Opus 4.5',desc:'Flagship — smartest, best for complex tasks'},
@@ -345,6 +362,12 @@ const models={
     {id:'openai/o3',name:'o3',desc:'Reasoning — best for logic and math'},
     {id:'openai/gpt-4.1',name:'GPT-4.1',desc:'Balanced — fast and reliable'},
     {id:'openai/gpt-4.1-mini',name:'GPT-4.1 Mini',desc:'Lightweight — fast, low cost'}
+  ],
+  gemini:[
+    {id:'google/gemini-2.5-pro',name:'Gemini 2.5 Pro',desc:'Flagship — best reasoning and coding'},
+    {id:'google/gemini-2.5-flash',name:'Gemini 2.5 Flash',desc:'Balanced — fast with thinking'},
+    {id:'google/gemini-2.0-flash',name:'Gemini 2.0 Flash',desc:'Speed — low latency, high throughput'},
+    {id:'google/gemini-2.0-flash-lite',name:'Gemini 2.0 Flash Lite',desc:'Lightweight — cost efficient'}
   ]
 };
 
