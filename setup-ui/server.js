@@ -234,18 +234,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     </div>
   </div></div>
 
-  <!-- Step 2: Choose AI Provider -->
+  <!-- Step 2: Choose AI Provider + Model -->
   <div class="step" id="step2"><div class="card">
     <h2>Buoc 2: Chon nha cung cap AI</h2>
     <p>Chon nha cung cap LLM ma ban muon su dung</p>
     <div class="providers">
       <div class="provider" data-provider="anthropic" onclick="selectProvider(this)">
         <div class="icon">&#x1f7e0;</div><div class="name">Anthropic</div>
-        <div style="color:#94a3b8;font-size:12px;margin-top:4px">Claude Opus 4.5</div>
+        <div style="color:#94a3b8;font-size:12px;margin-top:4px">Claude</div>
       </div>
       <div class="provider" data-provider="openai" onclick="selectProvider(this)">
         <div class="icon">&#x1f7e2;</div><div class="name">OpenAI</div>
-        <div style="color:#94a3b8;font-size:12px;margin-top:4px">GPT-5.2</div>
+        <div style="color:#94a3b8;font-size:12px;margin-top:4px">GPT</div>
+      </div>
+    </div>
+    <div id="modelSection" style="display:none;margin-top:20px">
+      <div class="field">
+        <label>&#x1f916; Chon model</label>
+        <select id="modelSelect" style="width:100%;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:15px;outline:none;cursor:pointer">
+        </select>
       </div>
     </div>
     <div class="btn-row"><button class="btn" id="nextStep2" disabled onclick="goStep(3)">Tiep tuc</button></div>
@@ -269,6 +276,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <p>Kiem tra lai thong tin truoc khi hoan tat</p>
     <div style="background:#0f172a;border-radius:8px;padding:16px;margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="color:#94a3b8">Nha cung cap:</span><span id="confirmProvider" style="font-weight:600"></span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="color:#94a3b8">Model:</span><span id="confirmModel" style="font-weight:600;color:#38bdf8"></span></div>
       <div style="display:flex;justify-content:space-between"><span style="color:#94a3b8">API Key:</span><span id="confirmKey" style="font-family:monospace"></span></div>
     </div>
     <div class="btn-row">
@@ -324,19 +332,38 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 </div>
 
 <script>
-let selectedProvider=null,keyVerified=false,configuredDomain='';
+let selectedProvider=null,selectedModel='',keyVerified=false,configuredDomain='';
 const names={anthropic:'Anthropic',openai:'OpenAI'};
+const models={
+  anthropic:[
+    {id:'anthropic/claude-opus-4-5',name:'Claude Opus 4.5',desc:'Flagship — smartest, best for complex tasks'},
+    {id:'anthropic/claude-sonnet-4-20250514',name:'Claude Sonnet 4',desc:'Balanced — fast and capable'},
+    {id:'anthropic/claude-haiku-3-5-20241022',name:'Claude Haiku 3.5',desc:'Fastest — lightweight, low cost'}
+  ],
+  openai:[
+    {id:'openai/gpt-5.2',name:'GPT-5.2',desc:'Latest — most powerful'},
+    {id:'openai/o3',name:'o3',desc:'Reasoning — best for logic and math'},
+    {id:'openai/gpt-4.1',name:'GPT-4.1',desc:'Balanced — fast and reliable'},
+    {id:'openai/gpt-4.1-mini',name:'GPT-4.1 Mini',desc:'Lightweight — fast, low cost'}
+  ]
+};
 
 function selectProvider(el){
   document.querySelectorAll('.provider').forEach(p=>p.classList.remove('selected'));
   el.classList.add('selected');selectedProvider=el.dataset.provider;
+  // Render model list
+  const sel=document.getElementById('modelSelect');
+  sel.innerHTML=models[selectedProvider].map((m,i)=>'<option value="'+m.id+'"'+(i===0?' selected':'')+'>'+m.name+' — '+m.desc+'</option>').join('');
+  selectedModel=models[selectedProvider][0].id;
+  sel.onchange=function(){selectedModel=this.value};
+  document.getElementById('modelSection').style.display='block';
   document.getElementById('nextStep2').disabled=false;
 }
 function goStep(n){
   document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));
   document.getElementById('step'+n).classList.add('active');
   if(n===3){document.getElementById('step3desc').textContent='Nhap '+names[selectedProvider]+' API key cua ban';document.getElementById('keyLabel').textContent=names[selectedProvider]+' API Key';document.getElementById('testStatus').className='status';keyVerified=false}
-  if(n===4){document.getElementById('confirmProvider').textContent=names[selectedProvider];const k=document.getElementById('apiKey').value;document.getElementById('confirmKey').textContent=k.substring(0,8)+'...'+k.substring(k.length-4)}
+  if(n===4){document.getElementById('confirmProvider').textContent=names[selectedProvider];const m=models[selectedProvider].find(x=>x.id===selectedModel);document.getElementById('confirmModel').textContent=m?m.name:selectedModel;const k=document.getElementById('apiKey').value;document.getElementById('confirmKey').textContent=k.substring(0,8)+'...'+k.substring(k.length-4)}
   if(n===6){document.getElementById('pairingUrl').textContent=dashboardUrlGlobal}
 }
 async function saveDomain(){
@@ -364,7 +391,7 @@ let dashboardUrlGlobal='';
 async function finish(){
   const btn=document.getElementById('finishBtn'),st=document.getElementById('finishStatus');
   btn.disabled=true;btn.textContent='Dang cau hinh...';st.className='status loading';st.textContent='Dang ghi cau hinh va khoi dong OpenClaw...';
-  try{const r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:selectedProvider,apiKey:document.getElementById('apiKey').value.trim(),domain:configuredDomain})});const d=await r.json();
+  try{const r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:selectedProvider,model:selectedModel,apiKey:document.getElementById('apiKey').value.trim(),domain:configuredDomain})});const d=await r.json();
   if(d.ok){dashboardUrlGlobal=d.dashboardUrl;goStep(5)}
   else{st.className='status fail';st.textContent='\\u274c '+(d.error||'Loi khi cau hinh');btn.disabled=false;btn.textContent='Hoan tat cai dat'}}
   catch(x){st.className='status fail';st.textContent='\\u274c Loi ket noi server';btn.disabled=false;btn.textContent='Hoan tat cai dat'}
@@ -516,9 +543,14 @@ const server = http.createServer(async (req, res) => {
       envContent += `\n${provider.envKey}=${body.apiKey}\n`;
       fs.writeFileSync('/opt/openclaw.env', envContent, 'utf8');
 
-      // 2. Copy config JSON va thay gateway token
+      // 2. Copy config JSON va thay gateway token + model
       const config = JSON.parse(fs.readFileSync(provider.configFile, 'utf8'));
       config.gateway.auth.token = gatewayToken;
+      // Ghi model da chon
+      const model = (body.model || '').trim();
+      if (model) {
+        config.agents.defaults.model.primary = model;
+      }
       // Neu co domain, update gateway bind de lang nghe 0.0.0.0
       if (domain) {
         config.gateway.bind = '0.0.0.0';
