@@ -213,9 +213,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <div class="container">
   <div class="logo"><h1>&#x1f43e; OpenClaw Setup</h1></div>
 
-  <!-- Step 1 -->
+  <!-- Step 1: Domain -->
   <div class="step active" id="step1"><div class="card">
-    <h2>Buoc 1: Chon nha cung cap AI</h2>
+    <h2>Buoc 1: Ten mien &amp; SSL (tuy chon)</h2>
+    <p>Nhap ten mien de su dung HTTPS voi chung chi Let's Encrypt hop le. Neu chua co ten mien, bam Bo qua — se dung self-signed cert voi IP.</p>
+    <div class="field">
+      <label>&#x1f310; Ten mien (domain)</label>
+      <input type="text" id="domainInput" placeholder="bot.example.com">
+      <p style="font-size:12px;color:#64748b;margin-top:4px">Tro DNS (A record) cua ten mien ve IP server nay truoc khi tiep tuc</p>
+    </div>
+    <div class="field">
+      <label>&#x1f4e7; Email Let's Encrypt (tuy chon)</label>
+      <input type="email" id="domainEmail" placeholder="admin@example.com">
+      <p style="font-size:12px;color:#64748b;margin-top:4px">Nhan thong bao khi cert sap het han</p>
+    </div>
+    <div class="status" id="domainStatus"></div>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="goStep(2)">Bo qua (dung IP)</button>
+      <button class="btn" id="domainBtn" onclick="saveDomain()">Cau hinh SSL</button>
+    </div>
+  </div></div>
+
+  <!-- Step 2: Choose AI Provider -->
+  <div class="step" id="step2"><div class="card">
+    <h2>Buoc 2: Chon nha cung cap AI</h2>
     <p>Chon nha cung cap LLM ma ban muon su dung</p>
     <div class="providers">
       <div class="provider" data-provider="anthropic" onclick="selectProvider(this)">
@@ -227,39 +248,39 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
         <div style="color:#94a3b8;font-size:12px;margin-top:4px">GPT-5.2</div>
       </div>
     </div>
-    <div class="btn-row"><button class="btn" id="nextStep1" disabled onclick="goStep(2)">Tiep tuc</button></div>
+    <div class="btn-row"><button class="btn" id="nextStep2" disabled onclick="goStep(3)">Tiep tuc</button></div>
   </div></div>
 
-  <!-- Step 2 -->
-  <div class="step" id="step2"><div class="card">
-    <h2>Buoc 2: Nhap API Key</h2>
-    <p id="step2desc">Nhap API key cua nha cung cap</p>
+  <!-- Step 3: API Key -->
+  <div class="step" id="step3"><div class="card">
+    <h2>Buoc 3: Nhap API Key</h2>
+    <p id="step3desc">Nhap API key cua nha cung cap</p>
     <div class="field"><label id="keyLabel">API Key</label><input type="password" id="apiKey" placeholder="sk-..."></div>
     <div class="btn-row">
-      <button class="btn btn-outline" onclick="goStep(1)">Quay lai</button>
+      <button class="btn btn-outline" onclick="goStep(2)">Quay lai</button>
       <button class="btn" id="testBtn" onclick="testKey()">Kiem tra ket noi</button>
     </div>
     <div class="status" id="testStatus"></div>
   </div></div>
 
-  <!-- Step 3 -->
-  <div class="step" id="step3"><div class="card">
-    <h2>Buoc 3: Xac nhan cau hinh</h2>
+  <!-- Step 4: Confirm -->
+  <div class="step" id="step4"><div class="card">
+    <h2>Buoc 4: Xac nhan cau hinh</h2>
     <p>Kiem tra lai thong tin truoc khi hoan tat</p>
     <div style="background:#0f172a;border-radius:8px;padding:16px;margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="color:#94a3b8">Nha cung cap:</span><span id="confirmProvider" style="font-weight:600"></span></div>
       <div style="display:flex;justify-content:space-between"><span style="color:#94a3b8">API Key:</span><span id="confirmKey" style="font-family:monospace"></span></div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-outline" onclick="goStep(2)">Quay lai</button>
+      <button class="btn btn-outline" onclick="goStep(3)">Quay lai</button>
       <button class="btn btn-success" id="finishBtn" onclick="finish()">Hoan tat cai dat</button>
     </div>
     <div class="status" id="finishStatus"></div>
   </div></div>
 
-  <!-- Step 4: Channels -->
-  <div class="step" id="step4"><div class="card">
-    <h2>Buoc 4: Kenh nhan tin (tuy chon)</h2>
+  <!-- Step 5: Channels -->
+  <div class="step" id="step5"><div class="card">
+    <h2>Buoc 5: Kenh nhan tin (tuy chon)</h2>
     <p>Ket noi kenh nhan tin de chat voi AI. Co the bo qua va cau hinh sau.</p>
     <div class="field">
       <label>&#x1f4e8; Telegram Bot Token</label>
@@ -273,14 +294,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     </div>
     <div class="status" id="channelStatus"></div>
     <div class="btn-row">
-      <button class="btn btn-outline" onclick="goStep(5)">Bo qua</button>
+      <button class="btn btn-outline" onclick="goStep(6)">Bo qua</button>
       <button class="btn" id="channelBtn" onclick="saveChannels()">Luu kenh nhan tin</button>
     </div>
   </div></div>
 
-  <!-- Step 5: Pairing -->
-  <div class="step" id="step5"><div class="card">
-    <h2>Buoc 5: Ghep noi Dashboard</h2>
+  <!-- Step 6: Pairing -->
+  <div class="step" id="step6"><div class="card">
+    <h2>Buoc 6: Ghep noi Dashboard</h2>
     <p>Mo link dashboard ben duoi trong <strong>tab moi</strong>, doi trang tai xong (se thay loi ghep noi - dieu nay binh thuong), roi quay lai day bam nut ghep noi.</p>
     <div class="url-box" id="pairingUrl" style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px 16px;margin:16px 0;word-break:break-all;font-family:monospace;font-size:14px;color:#38bdf8;cursor:pointer" onclick="window.open(this.textContent,'_blank')"></div>
     <p style="font-size:13px;color:#94a3b8;margin-bottom:16px">&#x261d; Bam vao link tren de mo trong tab moi</p>
@@ -290,8 +311,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div class="status" id="pairStatus"></div>
   </div></div>
 
-  <!-- Step 6: Done -->
-  <div class="step" id="step6"><div class="card"><div class="done-box">
+  <!-- Step 7: Done -->
+  <div class="step" id="step7"><div class="card"><div class="done-box">
     <div class="check">&#x2705;</div>
     <h2>OpenClaw da san sang!</h2>
     <p>Server cua ban da duoc cau hinh va ghep noi thanh cong.</p>
@@ -303,27 +324,38 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 </div>
 
 <script>
-let selectedProvider=null,keyVerified=false;
+let selectedProvider=null,keyVerified=false,configuredDomain='';
 const names={anthropic:'Anthropic',openai:'OpenAI'};
 
 function selectProvider(el){
   document.querySelectorAll('.provider').forEach(p=>p.classList.remove('selected'));
   el.classList.add('selected');selectedProvider=el.dataset.provider;
-  document.getElementById('nextStep1').disabled=false;
+  document.getElementById('nextStep2').disabled=false;
 }
 function goStep(n){
   document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));
   document.getElementById('step'+n).classList.add('active');
-  if(n===2){document.getElementById('step2desc').textContent='Nhap '+names[selectedProvider]+' API key cua ban';document.getElementById('keyLabel').textContent=names[selectedProvider]+' API Key';document.getElementById('testStatus').className='status';keyVerified=false}
-  if(n===3){document.getElementById('confirmProvider').textContent=names[selectedProvider];const k=document.getElementById('apiKey').value;document.getElementById('confirmKey').textContent=k.substring(0,8)+'...'+k.substring(k.length-4)}
-  if(n===5){document.getElementById('pairingUrl').textContent=dashboardUrlGlobal}
+  if(n===3){document.getElementById('step3desc').textContent='Nhap '+names[selectedProvider]+' API key cua ban';document.getElementById('keyLabel').textContent=names[selectedProvider]+' API Key';document.getElementById('testStatus').className='status';keyVerified=false}
+  if(n===4){document.getElementById('confirmProvider').textContent=names[selectedProvider];const k=document.getElementById('apiKey').value;document.getElementById('confirmKey').textContent=k.substring(0,8)+'...'+k.substring(k.length-4)}
+  if(n===6){document.getElementById('pairingUrl').textContent=dashboardUrlGlobal}
+}
+async function saveDomain(){
+  const btn=document.getElementById('domainBtn'),st=document.getElementById('domainStatus');
+  const domain=document.getElementById('domainInput').value.trim();
+  const email=document.getElementById('domainEmail').value.trim();
+  if(!domain){st.className='status fail';st.textContent='Vui long nhap ten mien';return}
+  btn.disabled=true;btn.textContent='Dang cau hinh SSL...';st.className='status loading';st.textContent='Dang cau hinh Caddy voi Let\\'s Encrypt...';
+  try{const r=await fetch('/api/domain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain,email})});const d=await r.json();
+  if(d.ok){configuredDomain=domain;st.className='status ok';st.textContent='\\u2705 Da cau hinh SSL cho '+domain+' thanh cong!';setTimeout(()=>goStep(2),1500)}
+  else{st.className='status fail';st.textContent='\\u274c '+(d.error||'Loi khi cau hinh domain');btn.disabled=false;btn.textContent='Cau hinh SSL'}}
+  catch(x){st.className='status fail';st.textContent='\\u274c Loi ket noi server';btn.disabled=false;btn.textContent='Cau hinh SSL'}
 }
 async function testKey(){
   const btn=document.getElementById('testBtn'),st=document.getElementById('testStatus'),k=document.getElementById('apiKey').value.trim();
   if(!k){st.className='status fail';st.textContent='Vui long nhap API key';return}
   btn.disabled=true;btn.textContent='Dang kiem tra...';st.className='status loading';st.textContent='Dang ket noi...';
   try{const r=await fetch('/api/test-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:selectedProvider,apiKey:k})});const d=await r.json();
-  if(d.ok){st.className='status ok';st.textContent='\\u2705 Ket noi thanh cong! API key hop le.';keyVerified=true;setTimeout(()=>goStep(3),1500)}
+  if(d.ok){st.className='status ok';st.textContent='\\u2705 Ket noi thanh cong! API key hop le.';keyVerified=true;setTimeout(()=>goStep(4),1500)}
   else{st.className='status fail';st.textContent='\\u274c '+(d.error||'API key khong hop le')}}
   catch(x){st.className='status fail';st.textContent='\\u274c Loi ket noi server'}
   btn.disabled=false;btn.textContent='Kiem tra ket noi';
@@ -332,8 +364,8 @@ let dashboardUrlGlobal='';
 async function finish(){
   const btn=document.getElementById('finishBtn'),st=document.getElementById('finishStatus');
   btn.disabled=true;btn.textContent='Dang cau hinh...';st.className='status loading';st.textContent='Dang ghi cau hinh va khoi dong OpenClaw...';
-  try{const r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:selectedProvider,apiKey:document.getElementById('apiKey').value.trim()})});const d=await r.json();
-  if(d.ok){dashboardUrlGlobal=d.dashboardUrl;goStep(4)}
+  try{const r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:selectedProvider,apiKey:document.getElementById('apiKey').value.trim(),domain:configuredDomain})});const d=await r.json();
+  if(d.ok){dashboardUrlGlobal=d.dashboardUrl;goStep(5)}
   else{st.className='status fail';st.textContent='\\u274c '+(d.error||'Loi khi cau hinh');btn.disabled=false;btn.textContent='Hoan tat cai dat'}}
   catch(x){st.className='status fail';st.textContent='\\u274c Loi ket noi server';btn.disabled=false;btn.textContent='Hoan tat cai dat'}
 }
@@ -344,7 +376,7 @@ async function saveChannels(){
   if(!tg&&!zl){st.className='status fail';st.textContent='Nhap it nhat 1 token hoac bam Bo qua';return}
   btn.disabled=true;btn.textContent='Dang luu...';st.className='status loading';st.textContent='Dang cau hinh kenh nhan tin...';
   try{const r=await fetch('/api/channels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({telegram:tg,zalo:zl})});const d=await r.json();
-  if(d.ok){st.className='status ok';st.textContent='\\u2705 Da luu kenh nhan tin!';setTimeout(()=>{goStep(5);document.getElementById('pairingUrl').textContent=dashboardUrlGlobal},1500)}
+  if(d.ok){st.className='status ok';st.textContent='\\u2705 Da luu kenh nhan tin!';setTimeout(()=>{goStep(6);document.getElementById('pairingUrl').textContent=dashboardUrlGlobal},1500)}
   else{st.className='status fail';st.textContent='\\u274c '+(d.error||'Loi khi luu');btn.disabled=false;btn.textContent='Luu kenh nhan tin'}}
   catch(x){st.className='status fail';st.textContent='\\u274c Loi ket noi server';btn.disabled=false;btn.textContent='Luu kenh nhan tin'}
 }
@@ -352,7 +384,7 @@ async function doPairing(){
   const btn=document.getElementById('pairBtn'),st=document.getElementById('pairStatus');
   btn.disabled=true;btn.textContent='Dang tim yeu cau ghep noi...';st.className='status loading';st.textContent='Dang kiem tra...';
   try{const r=await fetch('/api/pair',{method:'POST',headers:{'Content-Type':'application/json'}});const d=await r.json();
-  if(d.ok){goStep(6);document.getElementById('dashboardUrl').textContent=dashboardUrlGlobal;document.getElementById('dashboardLink').href=dashboardUrlGlobal}
+  if(d.ok){goStep(7);document.getElementById('dashboardUrl').textContent=dashboardUrlGlobal;document.getElementById('dashboardLink').href=dashboardUrlGlobal}
   else{st.className='status fail';st.textContent='\\u274c '+(d.error||'Khong tim thay yeu cau ghep noi');btn.disabled=false;btn.textContent='Thu lai ghep noi'}}
   catch(x){st.className='status fail';st.textContent='\\u274c Loi ket noi server';btn.disabled=false;btn.textContent='Thu lai ghep noi'}
 }
@@ -393,6 +425,52 @@ const server = http.createServer(async (req, res) => {
     } catch { return json(res, 400, { ok: false, error: 'Request khong hop le' }); }
   }
 
+  // --- API: Domain (cau hinh Caddy voi domain + Let's Encrypt) ---
+  if (req.method === 'POST' && url.pathname === '/api/domain') {
+    if (!isValidSession(req)) return json(res, 401, { ok: false, error: 'Chua dang nhap' });
+    try {
+      const body = await parseBody(req);
+      const domain = (body.domain || '').trim().toLowerCase();
+      const email = (body.email || '').trim();
+
+      if (!domain) return json(res, 400, { ok: false, error: 'Thieu ten mien' });
+      if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(domain)) {
+        return json(res, 400, { ok: false, error: 'Ten mien khong hop le' });
+      }
+
+      // Ghi Caddyfile voi domain + Let's Encrypt
+      const emailLine = email ? `\n  tls ${email}` : '';
+      const caddyConfig = `${domain} {${emailLine}
+  reverse_proxy localhost:18789
+}
+`;
+      fs.writeFileSync('/etc/caddy/Caddyfile', caddyConfig, 'utf8');
+
+      // Restart Caddy de apply config moi
+      execSync('systemctl restart caddy', { timeout: 15000 });
+      execSync('sleep 2');
+
+      // Kiem tra Caddy con chay khong
+      let caddyOk = false;
+      try { execSync('systemctl is-active --quiet caddy'); caddyOk = true; } catch { caddyOk = false; }
+
+      if (caddyOk) {
+        return json(res, 200, { ok: true, domain });
+      } else {
+        // Rollback ve config IP neu Caddy loi
+        const serverIP = getServerIP();
+        const fallbackConfig = `${serverIP} {
+  tls internal
+  reverse_proxy localhost:18789
+}
+`;
+        fs.writeFileSync('/etc/caddy/Caddyfile', fallbackConfig, 'utf8');
+        execSync('systemctl restart caddy 2>/dev/null || true', { timeout: 15000 });
+        return json(res, 500, { ok: false, error: 'Caddy khoi dong that bai voi domain nay. Co the DNS chua tro dung. Da rollback ve config IP.' });
+      }
+    } catch (e) { return json(res, 500, { ok: false, error: `Loi: ${e.message}` }); }
+  }
+
   // --- API: Test Key ---
   if (req.method === 'POST' && url.pathname === '/api/test-key') {
     if (!isValidSession(req)) return json(res, 401, { ok: false, error: 'Chua dang nhap' });
@@ -415,6 +493,7 @@ const server = http.createServer(async (req, res) => {
 
       const gatewayToken = getGatewayToken();
       const serverIP = getServerIP();
+      const domain = (body.domain || '').trim();
 
       // 1. Ghi API key vao /opt/openclaw.env
       let envContent = fs.readFileSync('/opt/openclaw.env', 'utf8');
@@ -425,6 +504,10 @@ const server = http.createServer(async (req, res) => {
       // 2. Copy config JSON va thay gateway token
       const config = JSON.parse(fs.readFileSync(provider.configFile, 'utf8'));
       config.gateway.auth.token = gatewayToken;
+      // Neu co domain, update gateway bind de lang nghe 0.0.0.0
+      if (domain) {
+        config.gateway.bind = '0.0.0.0';
+      }
       const configDir = '/home/openclaw/.openclaw';
       fs.mkdirSync(configDir, { recursive: true });
       fs.writeFileSync(`${configDir}/openclaw.json`, JSON.stringify(config, null, 2), 'utf8');
@@ -438,7 +521,9 @@ const server = http.createServer(async (req, res) => {
       let running = false;
       try { execSync('systemctl is-active --quiet openclaw'); running = true; } catch { running = false; }
 
-      const dashboardUrl = `https://${serverIP}?token=${gatewayToken}`;
+      // Dung domain neu da cau hinh, khong thi dung IP
+      const host = domain || serverIP;
+      const dashboardUrl = `https://${host}?token=${gatewayToken}`;
 
       if (running) {
         // Khong tu huy ngay — doi user hoan tat pairing truoc
