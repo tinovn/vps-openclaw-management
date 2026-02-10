@@ -42,7 +42,7 @@ apt-get -qqy update
 apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' full-upgrade
 apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' install \
     procps file apt-transport-https ca-certificates curl software-properties-common \
-    git build-essential libsystemd-dev jq unzip docker.io gnupg fail2ban ufw
+    git build-essential libsystemd-dev jq unzip docker.io gnupg fail2ban ufw dnsutils
 apt-get -qqy clean
 
 # =============================================================================

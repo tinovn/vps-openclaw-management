@@ -491,10 +491,26 @@ const server = http.createServer(async (req, res) => {
       // Kiem tra DNS: domain co tro ve IP server nay khong
       const serverIP = getServerIP();
       let resolvedIPs = [];
+      // Thu dig truoc
       try {
-        const dnsResult = execSync(`dig +short A ${domain} 2>/dev/null || nslookup ${domain} 2>/dev/null | grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+'`, { timeout: 10000, stdio: 'pipe' }).toString().trim();
-        resolvedIPs = dnsResult.split('\n').map(ip => ip.trim()).filter(ip => /^\d+\.\d+\.\d+\.\d+$/.test(ip));
-      } catch { resolvedIPs = []; }
+        const out = execSync(`dig +short A ${domain} 2>/dev/null`, { timeout: 10000, stdio: 'pipe' }).toString().trim();
+        if (out) resolvedIPs = out.split('\n').map(ip => ip.trim()).filter(ip => /^\d+\.\d+\.\d+\.\d+$/.test(ip));
+      } catch {}
+      // Fallback: host
+      if (resolvedIPs.length === 0) {
+        try {
+          const out = execSync(`host ${domain} 2>/dev/null`, { timeout: 10000, stdio: 'pipe' }).toString();
+          const m = out.match(/has address (\d+\.\d+\.\d+\.\d+)/g);
+          if (m) resolvedIPs = m.map(s => s.replace('has address ', ''));
+        } catch {}
+      }
+      // Fallback: python3 socket (luon co tren Ubuntu)
+      if (resolvedIPs.length === 0) {
+        try {
+          const out = execSync(`python3 -c "import socket; print(socket.gethostbyname('${domain}'))" 2>/dev/null`, { timeout: 10000, stdio: 'pipe' }).toString().trim();
+          if (out && /^\d+\.\d+\.\d+\.\d+$/.test(out)) resolvedIPs = [out];
+        } catch {}
+      }
 
       if (resolvedIPs.length === 0) {
         return json(res, 400, { ok: false, error: `Khong the phan giai DNS cho ${domain}. Hay tro A record ve ${serverIP} truoc.` });
