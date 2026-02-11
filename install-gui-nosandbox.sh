@@ -614,7 +614,7 @@ su - openclaw -c "cd /opt/openclaw && pnpm ui:build"
 log "Tao /usr/local/bin/openclaw..."
 cat > /usr/local/bin/openclaw << 'BINEOF'
 #!/bin/bash
-exec /usr/bin/node /opt/openclaw/dist/index.js "$@"
+su - openclaw -c "cd /opt/openclaw && node dist/index.js $*"
 BINEOF
 chmod +x /usr/local/bin/openclaw
 
