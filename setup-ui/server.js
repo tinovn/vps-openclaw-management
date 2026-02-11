@@ -159,7 +159,7 @@ function loginPage() {
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif;background:linear-gradient(135deg,#f0f4ff 0%,#e8f5e9 50%,#f3e5f5 100%);color:#1a1a2e;min-height:100vh;display:flex;align-items:center;justify-content:center}
 .container{width:100%;max-width:440px;padding:20px}
-.logo{text-align:center;margin-bottom:36px} .logo h1{font-size:32px;background:linear-gradient(135deg,#4285f4,#34a853);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:800} .logo p{color:#5f6368;margin-top:8px;font-size:14px}
+.logo{text-align:center;margin-bottom:36px} .logo img{height:48px;margin-bottom:12px} .logo h1{font-size:32px;background:linear-gradient(135deg,#4285f4,#34a853);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:800;margin-top:4px} .logo p{color:#5f6368;margin-top:8px;font-size:14px}
 .card{background:linear-gradient(135deg,#ffffff 0%,#f9fafb 100%);border-radius:16px;padding:36px;box-shadow:0 10px 40px rgba(0,0,0,.08);border:1px solid rgba(0,0,0,.06);position:relative;overflow:hidden} .card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#4285f4,#34a853,#fbbc05,#ea4335)} .card h2{font-size:20px;margin-bottom:24px;color:#1a1a2e;font-weight:700}
 .field{margin-bottom:20px} .field label{display:block;font-size:13px;color:#5f6368;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
 .field input{width:100%;padding:12px 16px;background:#f8f9fa;border:2px solid #e8eaed;border-radius:10px;color:#1a1a2e;font-size:15px;outline:none;transition:all .3s ease} .field input:focus{border-color:#4285f4;background:#fff;box-shadow:0 0 0 4px rgba(66,133,244,.1)}
@@ -167,7 +167,7 @@ body{font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif;b
 .error{color:#ea4335;font-size:13px;margin-top:14px;display:none;padding:10px 14px;background:#fce8e6;border-radius:8px;border:1px solid #f5c6cb} .error.show{display:block}
 </style></head><body>
 <div class="container">
-  <div class="logo"><h1>&#x1f43e; OpenClaw</h1><p>Dang nhap de cau hinh server</p></div>
+  <div class="logo"><img src="https://tino.vn/assets/logo/logo-mobile-light.png" alt="Logo"><h1>OpenClaw</h1><p>Dang nhap de cau hinh server</p></div>
   <div class="card">
     <h2>Dang nhap he thong</h2>
     <form id="f">
@@ -199,7 +199,7 @@ function setupPage() {
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif;background:linear-gradient(135deg,#f0f4ff 0%,#e8f5e9 50%,#f3e5f5 100%);color:#1a1a2e;min-height:100vh;padding:40px 20px}
 .container{max-width:640px;margin:0 auto}
-.logo{text-align:center;margin-bottom:12px} .logo h1{font-size:32px;background:linear-gradient(135deg,#4285f4,#34a853);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:800}
+.logo{text-align:center;margin-bottom:12px} .logo img{height:48px;margin-bottom:8px} .logo h1{font-size:32px;background:linear-gradient(135deg,#4285f4,#34a853);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:800;margin-top:4px}
 .steps-bar{display:flex;justify-content:center;gap:8px;margin-bottom:32px;flex-wrap:wrap}
 .step-dot{width:36px;height:36px;border-radius:50%;background:#e8eaed;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#9aa0a6;transition:all .3s ease;border:2px solid transparent}
 .step-dot.active{background:linear-gradient(135deg,#4285f4,#34a853);color:#fff;box-shadow:0 4px 15px rgba(66,133,244,.3)}
@@ -227,7 +227,7 @@ body{font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif;b
 .done-box .url-box,.url-box{background:#f8f9fa;border:2px solid #e8eaed;border-radius:10px;padding:14px 18px;margin:16px 0;word-break:break-all;font-family:'Courier New',monospace;font-size:14px;color:#4285f4;font-weight:600}
 </style></head><body>
 <div class="container">
-  <div class="logo"><h1>&#x1f43e; OpenClaw Setup</h1></div>
+  <div class="logo"><img src="https://tino.vn/assets/logo/logo-mobile-light.png" alt="Logo"><h1>OpenClaw Setup</h1></div>
   <div class="steps-bar" id="stepsBar">
     <div class="step-dot active" data-step="1">1</div>
     <div class="step-dot" data-step="2">2</div>
