@@ -305,21 +305,37 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   <!-- Step 5: Channels -->
   <div class="step" id="step5"><div class="card">
     <h2>Buoc 5: Kenh nhan tin (tuy chon)</h2>
-    <p>Ket noi kenh nhan tin de chat voi AI. Co the bo qua va cau hinh sau.</p>
-    <div class="field">
-      <label>&#x1f4e8; Telegram Bot Token</label>
-      <input type="text" id="telegramToken" placeholder="123456789:ABCdefghijklmnop">
-      <p style="font-size:12px;color:#64748b;margin-top:4px">Tao bot tai <a href="https://t.me/BotFather" target="_blank" style="color:#38bdf8">@BotFather</a> tren Telegram, chay /newbot de lay token</p>
+    <p>Chon kenh nhan tin de ket noi voi AI. Co the bo qua va cau hinh sau.</p>
+    <div class="providers" id="channelCards">
+      <div class="provider" data-channel="telegram" onclick="selectChannel(this)">
+        <div class="icon">&#x1f4e8;</div><div class="name">Telegram</div>
+        <div style="color:#94a3b8;font-size:12px;margin-top:4px">Bot API</div>
+      </div>
+      <div class="provider" data-channel="zalo" onclick="selectChannel(this)">
+        <div class="icon">&#x1f4ac;</div><div class="name">Zalo</div>
+        <div style="color:#94a3b8;font-size:12px;margin-top:4px">Bot Platform</div>
+      </div>
     </div>
-    <div class="field">
-      <label>&#x1f4ac; Zalo Bot Token</label>
-      <input type="text" id="zaloToken" placeholder="12345689:abc-xyz">
-      <p style="font-size:12px;color:#64748b;margin-top:4px">Tao bot tai <a href="https://bot.zaloplatforms.com" target="_blank" style="color:#38bdf8">bot.zaloplatforms.com</a> de lay token</p>
+    <!-- Telegram Token Input -->
+    <div id="channelTelegram" style="display:none;margin-top:20px">
+      <div class="field">
+        <label>&#x1f4e8; Telegram Bot Token</label>
+        <input type="text" id="telegramToken" placeholder="123456789:ABCdefghijklmnop">
+        <p style="font-size:12px;color:#64748b;margin-top:4px">Tao bot tai <a href="https://t.me/BotFather" target="_blank" style="color:#38bdf8">@BotFather</a> tren Telegram, chay /newbot de lay token</p>
+      </div>
+    </div>
+    <!-- Zalo Token Input -->
+    <div id="channelZalo" style="display:none;margin-top:20px">
+      <div class="field">
+        <label>&#x1f4ac; Zalo Bot Token</label>
+        <input type="text" id="zaloToken" placeholder="12345689:abc-xyz">
+        <p style="font-size:12px;color:#64748b;margin-top:4px">Tao bot tai <a href="https://bot.zaloplatforms.com" target="_blank" style="color:#38bdf8">bot.zaloplatforms.com</a> de lay token</p>
+      </div>
     </div>
     <div class="status" id="channelStatus"></div>
-    <div class="btn-row">
+    <div class="btn-row" id="channelBtnRow">
       <button class="btn btn-outline" onclick="goStep(6)">Bo qua</button>
-      <button class="btn" id="channelBtn" onclick="saveChannels()">Luu kenh nhan tin</button>
+      <button class="btn" id="channelBtn" style="display:none" onclick="saveChannels()">Luu kenh nhan tin</button>
     </div>
     <!-- Telegram Pairing Code -->
     <div id="telegramPairSection" style="display:none;margin-top:24px;border-top:1px solid #334155;padding-top:20px">
@@ -432,11 +448,20 @@ async function finish(){
   else{st.className='status fail';st.textContent='\\u274c '+(d.error||'Loi khi cau hinh');btn.disabled=false;btn.textContent='Hoan tat cai dat'}}
   catch(x){st.className='status fail';st.textContent='\\u274c Loi ket noi server';btn.disabled=false;btn.textContent='Hoan tat cai dat'}
 }
+let selectedChannel=null;
+function selectChannel(el){
+  document.querySelectorAll('#channelCards .provider').forEach(p=>p.classList.remove('selected'));
+  el.classList.add('selected');selectedChannel=el.dataset.channel;
+  // An tat ca input, chi hien kenh duoc chon
+  document.getElementById('channelTelegram').style.display=selectedChannel==='telegram'?'block':'none';
+  document.getElementById('channelZalo').style.display=selectedChannel==='zalo'?'block':'none';
+  document.getElementById('channelBtn').style.display='inline-block';
+}
 async function saveChannels(){
   const btn=document.getElementById('channelBtn'),st=document.getElementById('channelStatus');
-  const tg=document.getElementById('telegramToken').value.trim();
-  const zl=document.getElementById('zaloToken').value.trim();
-  if(!tg&&!zl){st.className='status fail';st.textContent='Nhap it nhat 1 token hoac bam Bo qua';return}
+  const tg=selectedChannel==='telegram'?document.getElementById('telegramToken').value.trim():'';
+  const zl=selectedChannel==='zalo'?document.getElementById('zaloToken').value.trim():'';
+  if(!tg&&!zl){st.className='status fail';st.textContent='Vui long nhap token cua kenh da chon';return}
   btn.disabled=true;btn.textContent='Dang luu...';st.className='status loading';st.textContent='Dang cau hinh kenh nhan tin...';
   try{const r=await fetch('/api/channels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({telegram:tg,zalo:zl})});const d=await r.json();
   if(d.ok){st.className='status ok';st.textContent='\\u2705 Da luu kenh nhan tin!';
@@ -445,8 +470,9 @@ async function saveChannels(){
       setTimeout(()=>{
         st.className='status';
         document.getElementById('telegramPairSection').style.display='block';
-        btn.style.display='none';
-        document.querySelector('#step5 .btn-row').style.display='none';
+        document.getElementById('channelBtnRow').style.display='none';
+        document.getElementById('channelCards').style.display='none';
+        document.getElementById('channelTelegram').style.display='none';
       },1500);
     } else {
       setTimeout(()=>{goStep(6);document.getElementById('pairingUrl').textContent=dashboardUrlGlobal},1500);
