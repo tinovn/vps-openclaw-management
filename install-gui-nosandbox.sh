@@ -606,6 +606,14 @@ su - openclaw -c "cd /opt/openclaw && pnpm build"
 su - openclaw -c "cd /opt/openclaw && pnpm ui:install"
 su - openclaw -c "cd /opt/openclaw && pnpm ui:build"
 
+# Tao wrapper script de `openclaw` co trong PATH
+log "Tao /usr/local/bin/openclaw..."
+cat > /usr/local/bin/openclaw << 'BINEOF'
+#!/bin/bash
+exec /usr/bin/node /opt/openclaw/dist/index.js "$@"
+BINEOF
+chmod +x /usr/local/bin/openclaw
+
 # =============================================================================
 # 16. Cai dat Homebrew + wacli
 # =============================================================================
