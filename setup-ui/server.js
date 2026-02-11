@@ -157,14 +157,14 @@ function loginPage() {
 <title>OpenClaw Setup</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center}
-.container{width:100%;max-width:420px;padding:20px}
-.logo{text-align:center;margin-bottom:32px} .logo h1{font-size:28px;color:#38bdf8} .logo p{color:#94a3b8;margin-top:8px;font-size:14px}
-.card{background:#1e293b;border-radius:12px;padding:32px;box-shadow:0 4px 24px rgba(0,0,0,.3)} .card h2{font-size:18px;margin-bottom:24px;color:#f1f5f9}
-.field{margin-bottom:16px} .field label{display:block;font-size:13px;color:#94a3b8;margin-bottom:6px;font-weight:500}
-.field input{width:100%;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:15px;outline:none;transition:border .2s} .field input:focus{border-color:#38bdf8}
-.btn{width:100%;padding:12px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s} .btn:hover{background:#1d4ed8} .btn:disabled{opacity:.5;cursor:not-allowed}
-.error{color:#f87171;font-size:13px;margin-top:12px;display:none} .error.show{display:block}
+body{font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif;background:linear-gradient(135deg,#f0f4ff 0%,#e8f5e9 50%,#f3e5f5 100%);color:#1a1a2e;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.container{width:100%;max-width:440px;padding:20px}
+.logo{text-align:center;margin-bottom:36px} .logo h1{font-size:32px;background:linear-gradient(135deg,#4285f4,#34a853);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:800} .logo p{color:#5f6368;margin-top:8px;font-size:14px}
+.card{background:linear-gradient(135deg,#ffffff 0%,#f9fafb 100%);border-radius:16px;padding:36px;box-shadow:0 10px 40px rgba(0,0,0,.08);border:1px solid rgba(0,0,0,.06);position:relative;overflow:hidden} .card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#4285f4,#34a853,#fbbc05,#ea4335)} .card h2{font-size:20px;margin-bottom:24px;color:#1a1a2e;font-weight:700}
+.field{margin-bottom:20px} .field label{display:block;font-size:13px;color:#5f6368;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.field input{width:100%;padding:12px 16px;background:#f8f9fa;border:2px solid #e8eaed;border-radius:10px;color:#1a1a2e;font-size:15px;outline:none;transition:all .3s ease} .field input:focus{border-color:#4285f4;background:#fff;box-shadow:0 0 0 4px rgba(66,133,244,.1)}
+.btn{width:100%;padding:14px;background:linear-gradient(135deg,#4285f4,#34a853);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;transition:all .3s ease;box-shadow:0 4px 15px rgba(66,133,244,.3)} .btn:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(66,133,244,.4)} .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.error{color:#ea4335;font-size:13px;margin-top:14px;display:none;padding:10px 14px;background:#fce8e6;border-radius:8px;border:1px solid #f5c6cb} .error.show{display:block}
 </style></head><body>
 <div class="container">
   <div class="logo"><h1>&#x1f43e; OpenClaw</h1><p>Dang nhap de cau hinh server</p></div>
@@ -197,33 +197,46 @@ function setupPage() {
 <title>OpenClaw Setup</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;padding:40px 20px}
-.container{max-width:600px;margin:0 auto}
-.logo{text-align:center;margin-bottom:32px} .logo h1{font-size:28px;color:#38bdf8}
-.card{background:#1e293b;border-radius:12px;padding:32px;box-shadow:0 4px 24px rgba(0,0,0,.3);margin-bottom:24px}
-.card h2{font-size:18px;margin-bottom:8px;color:#f1f5f9} .card p{color:#94a3b8;font-size:14px;margin-bottom:20px}
+body{font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif;background:linear-gradient(135deg,#f0f4ff 0%,#e8f5e9 50%,#f3e5f5 100%);color:#1a1a2e;min-height:100vh;padding:40px 20px}
+.container{max-width:640px;margin:0 auto}
+.logo{text-align:center;margin-bottom:12px} .logo h1{font-size:32px;background:linear-gradient(135deg,#4285f4,#34a853);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:800}
+.steps-bar{display:flex;justify-content:center;gap:8px;margin-bottom:32px;flex-wrap:wrap}
+.step-dot{width:36px;height:36px;border-radius:50%;background:#e8eaed;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#9aa0a6;transition:all .3s ease;border:2px solid transparent}
+.step-dot.active{background:linear-gradient(135deg,#4285f4,#34a853);color:#fff;box-shadow:0 4px 15px rgba(66,133,244,.3)}
+.step-dot.done{background:#34a853;color:#fff}
+.card{background:linear-gradient(135deg,#ffffff 0%,#f9fafb 100%);border-radius:16px;padding:36px;box-shadow:0 10px 40px rgba(0,0,0,.08);margin-bottom:24px;border:1px solid rgba(0,0,0,.06);position:relative;overflow:hidden} .card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#4285f4,#34a853,#fbbc05,#ea4335)}
+.card h2{font-size:20px;margin-bottom:8px;color:#1a1a2e;font-weight:700} .card p{color:#5f6368;font-size:14px;margin-bottom:20px;line-height:1.6}
 .step{display:none} .step.active{display:block}
-.providers{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.provider{padding:20px;background:#0f172a;border:2px solid #334155;border-radius:10px;cursor:pointer;text-align:center;transition:all .2s}
-.provider:hover{border-color:#38bdf8} .provider.selected{border-color:#2563eb;background:#1e3a5f}
-.provider .icon{font-size:32px;margin-bottom:8px} .provider .name{font-size:15px;font-weight:600}
-.field{margin-bottom:16px} .field label{display:block;font-size:13px;color:#94a3b8;margin-bottom:6px;font-weight:500}
-.field input{width:100%;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:15px;outline:none;transition:border .2s} .field input:focus{border-color:#38bdf8}
-.btn{padding:12px 24px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s} .btn:hover{background:#1d4ed8} .btn:disabled{opacity:.5;cursor:not-allowed}
-.btn-outline{background:transparent;border:1px solid #334155;color:#94a3b8} .btn-outline:hover{border-color:#38bdf8;color:#38bdf8;background:transparent}
-.btn-success{background:#16a34a} .btn-success:hover{background:#15803d}
-.btn-row{display:flex;gap:12px;justify-content:flex-end;margin-top:20px}
-.status{padding:12px 16px;border-radius:8px;font-size:14px;margin-top:16px;display:none}
-.status.ok{display:block;background:#052e16;border:1px solid #16a34a;color:#4ade80}
-.status.fail{display:block;background:#310413;border:1px solid #dc2626;color:#f87171}
-.status.loading{display:block;background:#172554;border:1px solid #2563eb;color:#60a5fa}
+.providers{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.provider{padding:22px;background:#f8f9fa;border:2px solid #e8eaed;border-radius:14px;cursor:pointer;text-align:center;transition:all .3s ease}
+.provider:hover{border-color:#4285f4;transform:translateY(-2px);box-shadow:0 8px 25px rgba(66,133,244,.12)} .provider.selected{border-color:#4285f4;background:linear-gradient(135deg,#e8f0fe,#e6f4ea);box-shadow:0 4px 20px rgba(66,133,244,.15)}
+.provider .icon{font-size:36px;margin-bottom:10px} .provider .name{font-size:15px;font-weight:700;color:#1a1a2e}
+.field{margin-bottom:18px} .field label{display:block;font-size:13px;color:#5f6368;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.field input{width:100%;padding:12px 16px;background:#f8f9fa;border:2px solid #e8eaed;border-radius:10px;color:#1a1a2e;font-size:15px;outline:none;transition:all .3s ease} .field input:focus{border-color:#4285f4;background:#fff;box-shadow:0 0 0 4px rgba(66,133,244,.1)}
+.btn{padding:12px 28px;background:linear-gradient(135deg,#4285f4,#34a853);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;transition:all .3s ease;box-shadow:0 4px 15px rgba(66,133,244,.3)} .btn:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(66,133,244,.4)} .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-outline{background:#fff;border:2px solid #e8eaed;color:#5f6368;box-shadow:none} .btn-outline:hover{border-color:#4285f4;color:#4285f4;background:#f8f9fa;transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.btn-success{background:linear-gradient(135deg,#34a853,#1e8e3e)} .btn-success:hover{box-shadow:0 8px 25px rgba(52,168,83,.4)}
+.btn-row{display:flex;gap:12px;justify-content:flex-end;margin-top:24px}
+.status{padding:14px 18px;border-radius:10px;font-size:14px;margin-top:16px;display:none;font-weight:500}
+.status.ok{display:block;background:#e6f4ea;border:1px solid #34a853;color:#1e8e3e}
+.status.fail{display:block;background:#fce8e6;border:1px solid #ea4335;color:#c5221f}
+.status.loading{display:block;background:#e8f0fe;border:1px solid #4285f4;color:#1967d2}
 .done-box{text-align:center;padding:40px} .done-box .check{font-size:64px;margin-bottom:16px}
-.done-box h2{font-size:22px;color:#4ade80;margin-bottom:12px} .done-box p{color:#94a3b8;margin-bottom:8px;font-size:14px}
-.done-box a{color:#38bdf8;text-decoration:none;font-weight:600;font-size:16px} .done-box a:hover{text-decoration:underline}
-.done-box .url-box{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px 16px;margin:16px 0;word-break:break-all;font-family:monospace;font-size:14px;color:#38bdf8}
+.done-box h2{font-size:24px;color:#34a853;margin-bottom:12px;font-weight:800} .done-box p{color:#5f6368;margin-bottom:8px;font-size:14px}
+.done-box a{color:#4285f4;text-decoration:none;font-weight:700;font-size:16px;padding:10px 24px;background:linear-gradient(135deg,#e8f0fe,#e6f4ea);border-radius:10px;display:inline-block;transition:all .3s ease} .done-box a:hover{transform:translateY(-2px);box-shadow:0 4px 15px rgba(66,133,244,.2)}
+.done-box .url-box,.url-box{background:#f8f9fa;border:2px solid #e8eaed;border-radius:10px;padding:14px 18px;margin:16px 0;word-break:break-all;font-family:'Courier New',monospace;font-size:14px;color:#4285f4;font-weight:600}
 </style></head><body>
 <div class="container">
   <div class="logo"><h1>&#x1f43e; OpenClaw Setup</h1></div>
+  <div class="steps-bar" id="stepsBar">
+    <div class="step-dot active" data-step="1">1</div>
+    <div class="step-dot" data-step="2">2</div>
+    <div class="step-dot" data-step="3">3</div>
+    <div class="step-dot" data-step="4">4</div>
+    <div class="step-dot" data-step="5">5</div>
+    <div class="step-dot" data-step="6">6</div>
+    <div class="step-dot" data-step="7">7</div>
+  </div>
 
   <!-- Step 1: Domain -->
   <div class="step active" id="step1"><div class="card">
@@ -232,12 +245,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div class="field">
       <label>&#x1f310; Ten mien (domain)</label>
       <input type="text" id="domainInput" placeholder="bot.example.com">
-      <p style="font-size:12px;color:#64748b;margin-top:4px">Tro DNS (A record) cua ten mien ve IP server nay truoc khi tiep tuc</p>
+      <p style="font-size:12px;color:#9aa0a6;margin-top:4px">Tro DNS (A record) cua ten mien ve IP server nay truoc khi tiep tuc</p>
     </div>
     <div class="field">
       <label>&#x1f4e7; Email Let's Encrypt (tuy chon)</label>
       <input type="email" id="domainEmail" placeholder="admin@example.com">
-      <p style="font-size:12px;color:#64748b;margin-top:4px">Nhan thong bao khi cert sap het han</p>
+      <p style="font-size:12px;color:#9aa0a6;margin-top:4px">Nhan thong bao khi cert sap het han</p>
     </div>
     <div class="status" id="domainStatus"></div>
     <div class="btn-row">
@@ -253,21 +266,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div class="providers" style="grid-template-columns:1fr 1fr 1fr">
       <div class="provider" data-provider="anthropic" onclick="selectProvider(this)">
         <div class="icon">&#x1f7e0;</div><div class="name">Anthropic</div>
-        <div style="color:#94a3b8;font-size:12px;margin-top:4px">Claude</div>
+        <div style="color:#9aa0a6;font-size:12px;margin-top:4px">Claude</div>
       </div>
       <div class="provider" data-provider="openai" onclick="selectProvider(this)">
         <div class="icon">&#x1f7e2;</div><div class="name">OpenAI</div>
-        <div style="color:#94a3b8;font-size:12px;margin-top:4px">GPT</div>
+        <div style="color:#9aa0a6;font-size:12px;margin-top:4px">GPT</div>
       </div>
       <div class="provider" data-provider="gemini" onclick="selectProvider(this)">
         <div class="icon">&#x1f535;</div><div class="name">Google</div>
-        <div style="color:#94a3b8;font-size:12px;margin-top:4px">Gemini</div>
+        <div style="color:#9aa0a6;font-size:12px;margin-top:4px">Gemini</div>
       </div>
     </div>
     <div id="modelSection" style="display:none;margin-top:20px">
       <div class="field">
         <label>&#x1f916; Chon model</label>
-        <select id="modelSelect" style="width:100%;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:15px;outline:none;cursor:pointer">
+        <select id="modelSelect" style="width:100%;padding:12px 16px;background:#f8f9fa;border:2px solid #e8eaed;border-radius:10px;color:#1a1a2e;font-size:15px;outline:none;cursor:pointer;transition:all .3s ease">
         </select>
       </div>
     </div>
@@ -290,10 +303,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   <div class="step" id="step4"><div class="card">
     <h2>Buoc 4: Xac nhan cau hinh</h2>
     <p>Kiem tra lai thong tin truoc khi hoan tat</p>
-    <div style="background:#0f172a;border-radius:8px;padding:16px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="color:#94a3b8">Nha cung cap:</span><span id="confirmProvider" style="font-weight:600"></span></div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="color:#94a3b8">Model:</span><span id="confirmModel" style="font-weight:600;color:#38bdf8"></span></div>
-      <div style="display:flex;justify-content:space-between"><span style="color:#94a3b8">API Key:</span><span id="confirmKey" style="font-family:monospace"></span></div>
+    <div style="background:#f8f9fa;border-radius:12px;padding:20px;margin-bottom:16px;border:2px solid #e8eaed">
+      <div style="display:flex;justify-content:space-between;margin-bottom:12px"><span style="color:#5f6368;font-weight:500">Nha cung cap:</span><span id="confirmProvider" style="font-weight:700;color:#1a1a2e"></span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:12px"><span style="color:#5f6368;font-weight:500">Model:</span><span id="confirmModel" style="font-weight:700;color:#4285f4"></span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:#5f6368;font-weight:500">API Key:</span><span id="confirmKey" style="font-family:'Courier New',monospace;color:#1a1a2e"></span></div>
     </div>
     <div class="btn-row">
       <button class="btn btn-outline" onclick="goStep(3)">Quay lai</button>
@@ -309,11 +322,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div class="providers" id="channelCards">
       <div class="provider" data-channel="telegram" onclick="selectChannel(this)">
         <div class="icon">&#x1f4e8;</div><div class="name">Telegram</div>
-        <div style="color:#94a3b8;font-size:12px;margin-top:4px">Bot API</div>
+        <div style="color:#9aa0a6;font-size:12px;margin-top:4px">Bot API</div>
       </div>
       <div class="provider" data-channel="zalo" onclick="selectChannel(this)">
         <div class="icon">&#x1f4ac;</div><div class="name">Zalo</div>
-        <div style="color:#94a3b8;font-size:12px;margin-top:4px">Bot Platform</div>
+        <div style="color:#9aa0a6;font-size:12px;margin-top:4px">Bot Platform</div>
       </div>
     </div>
     <!-- Telegram Token Input -->
@@ -321,7 +334,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <div class="field">
         <label>&#x1f4e8; Telegram Bot Token</label>
         <input type="text" id="telegramToken" placeholder="123456789:ABCdefghijklmnop">
-        <p style="font-size:12px;color:#64748b;margin-top:4px">Tao bot tai <a href="https://t.me/BotFather" target="_blank" style="color:#38bdf8">@BotFather</a> tren Telegram, chay /newbot de lay token</p>
+        <p style="font-size:12px;color:#9aa0a6;margin-top:4px">Tao bot tai <a href="https://t.me/BotFather" target="_blank" style="color:#4285f4">@BotFather</a> tren Telegram, chay /newbot de lay token</p>
       </div>
     </div>
     <!-- Zalo Token Input -->
@@ -329,7 +342,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <div class="field">
         <label>&#x1f4ac; Zalo Bot Token</label>
         <input type="text" id="zaloToken" placeholder="12345689:abc-xyz">
-        <p style="font-size:12px;color:#64748b;margin-top:4px">Tao bot tai <a href="https://bot.zaloplatforms.com" target="_blank" style="color:#38bdf8">bot.zaloplatforms.com</a> de lay token</p>
+        <p style="font-size:12px;color:#9aa0a6;margin-top:4px">Tao bot tai <a href="https://bot.zaloplatforms.com" target="_blank" style="color:#4285f4">bot.zaloplatforms.com</a> de lay token</p>
       </div>
     </div>
     <div class="status" id="channelStatus"></div>
@@ -338,9 +351,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <button class="btn" id="channelBtn" style="display:none" onclick="saveChannels()">Luu kenh nhan tin</button>
     </div>
     <!-- Telegram Pairing Code -->
-    <div id="telegramPairSection" style="display:none;margin-top:24px;border-top:1px solid #334155;padding-top:20px">
-      <h3 style="font-size:16px;color:#f1f5f9;margin-bottom:8px">&#x1f517; Ghep noi Telegram Bot</h3>
-      <p style="color:#94a3b8;font-size:13px;margin-bottom:16px">Mo bot Telegram cua ban, gui tin nhan bat ky. Bot se tra ve <strong style="color:#38bdf8">ma ghep noi (pairing code)</strong>. Nhap ma do vao ben duoi de ket noi.</p>
+    <div id="telegramPairSection" style="display:none;margin-top:24px;border-top:2px solid #e8eaed;padding-top:20px">
+      <h3 style="font-size:16px;color:#1a1a2e;margin-bottom:8px;font-weight:700">&#x1f517; Ghep noi Telegram Bot</h3>
+      <p style="color:#5f6368;font-size:13px;margin-bottom:16px;line-height:1.6">Mo bot Telegram cua ban, gui tin nhan bat ky. Bot se tra ve <strong style="color:#4285f4">ma ghep noi (pairing code)</strong>. Nhap ma do vao ben duoi de ket noi.</p>
       <div class="field">
         <label>Ma ghep noi (Pairing Code)</label>
         <input type="text" id="telegramPairCode" placeholder="Nhap ma ghep noi tu Telegram bot">
@@ -357,8 +370,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   <div class="step" id="step6"><div class="card">
     <h2>Buoc 6: Ghep noi Dashboard</h2>
     <p>Mo link dashboard ben duoi trong <strong>tab moi</strong>, doi trang tai xong (se thay loi ghep noi - dieu nay binh thuong), roi quay lai day bam nut ghep noi.</p>
-    <div class="url-box" id="pairingUrl" style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px 16px;margin:16px 0;word-break:break-all;font-family:monospace;font-size:14px;color:#38bdf8;cursor:pointer" onclick="window.open(this.textContent,'_blank')"></div>
-    <p style="font-size:13px;color:#94a3b8;margin-bottom:16px">&#x261d; Bam vao link tren de mo trong tab moi</p>
+    <div class="url-box" id="pairingUrl" style="cursor:pointer" onclick="window.open(this.textContent,'_blank')"></div>
+    <p style="font-size:13px;color:#5f6368;margin-bottom:16px">&#x261d; Bam vao link tren de mo trong tab moi</p>
     <div class="btn-row">
       <button class="btn" id="pairBtn" onclick="doPairing()">Da mo Dashboard - Ghep noi ngay</button>
     </div>
@@ -371,9 +384,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <h2>OpenClaw da san sang!</h2>
     <p>Server cua ban da duoc cau hinh va ghep noi thanh cong.</p>
     <p>Lam moi trang dashboard hoac truy cap tai:</p>
-    <div class="url-box" id="dashboardUrl" style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px 16px;margin:16px 0;word-break:break-all;font-family:monospace;font-size:14px;color:#38bdf8"></div>
+    <div class="url-box" id="dashboardUrl"></div>
     <a id="dashboardLink" href="#">Mo Dashboard &#x2192;</a>
-    <p style="margin-top:24px;color:#64748b;font-size:12px">Trang setup nay se tu dong dong sau 10 giay...</p>
+    <p style="margin-top:24px;color:#9aa0a6;font-size:12px">Trang setup nay se tu dong dong sau 10 giay...</p>
   </div></div></div>
 </div>
 
@@ -414,6 +427,13 @@ function selectProvider(el){
 function goStep(n){
   document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));
   document.getElementById('step'+n).classList.add('active');
+  // Cap nhat step dots
+  document.querySelectorAll('.step-dot').forEach(d=>{
+    const s=parseInt(d.dataset.step);
+    d.classList.remove('active','done');
+    if(s<n)d.classList.add('done');
+    if(s===n)d.classList.add('active');
+  });
   if(n===3){document.getElementById('step3desc').textContent='Nhap '+names[selectedProvider]+' API key cua ban';document.getElementById('keyLabel').textContent=names[selectedProvider]+' API Key';document.getElementById('testStatus').className='status';keyVerified=false}
   if(n===4){document.getElementById('confirmProvider').textContent=names[selectedProvider];const m=models[selectedProvider].find(x=>x.id===selectedModel);document.getElementById('confirmModel').textContent=m?m.name:selectedModel;const k=document.getElementById('apiKey').value;document.getElementById('confirmKey').textContent=k.substring(0,8)+'...'+k.substring(k.length-4)}
   if(n===6){document.getElementById('pairingUrl').textContent=dashboardUrlGlobal}
