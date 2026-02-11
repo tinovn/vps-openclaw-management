@@ -394,7 +394,7 @@ cat > /etc/config/anthropic.json << 'EOF'
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["127.0.0.1"]
+    "trustedProxies": ["127.0.0.1", "::1"]
   }
 }
 EOF
@@ -430,7 +430,7 @@ cat > /etc/config/openai.json << 'EOF'
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["127.0.0.1"]
+    "trustedProxies": ["127.0.0.1", "::1"]
   }
 }
 EOF
@@ -466,7 +466,7 @@ cat > /etc/config/gemini.json << 'EOF'
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["127.0.0.1"]
+    "trustedProxies": ["127.0.0.1", "::1"]
   }
 }
 EOF
