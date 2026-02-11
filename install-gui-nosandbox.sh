@@ -92,6 +92,10 @@ chown -R openclaw:openclaw /home/openclaw/.openclaw
 chmod 0700 /home/openclaw/.openclaw
 chown -R openclaw:openclaw /home/openclaw/clawd
 
+# Cho phep openclaw chay apt khong can password (nosandbox can quyen nay)
+echo 'openclaw ALL=(ALL) NOPASSWD: /usr/bin/apt' > /etc/sudoers.d/openclaw
+chmod 440 /etc/sudoers.d/openclaw
+
 # =============================================================================
 # 7. Clone repo va checkout version
 # =============================================================================
