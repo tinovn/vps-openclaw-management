@@ -360,8 +360,22 @@ body{font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif;b
       </div>
       <div class="status" id="telegramPairStatus"></div>
       <div class="btn-row">
-        <button class="btn btn-outline" onclick="skipTelegramPair()">Bo qua</button>
+        <button class="btn btn-outline" onclick="skipChannelPair()">Bo qua</button>
         <button class="btn btn-success" id="telegramPairBtn" onclick="approveTelegramPair()">Ghep noi Telegram</button>
+      </div>
+    </div>
+    <!-- Zalo Pairing Code -->
+    <div id="zaloPairSection" style="display:none;margin-top:24px;border-top:2px solid #e8eaed;padding-top:20px">
+      <h3 style="font-size:16px;color:#1a1a2e;margin-bottom:8px;font-weight:700">&#x1f517; Ghep noi Zalo Bot</h3>
+      <p style="color:#5f6368;font-size:13px;margin-bottom:16px;line-height:1.6">Mo Zalo, tim bot cua ban va gui tin nhan bat ky. Bot se tra ve <strong style="color:#4285f4">ma ghep noi (pairing code)</strong>. Nhap ma do vao ben duoi de ket noi.</p>
+      <div class="field">
+        <label>Ma ghep noi (Pairing Code)</label>
+        <input type="text" id="zaloPairCode" placeholder="Nhap ma ghep noi tu Zalo bot">
+      </div>
+      <div class="status" id="zaloPairStatus"></div>
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="skipChannelPair()">Bo qua</button>
+        <button class="btn btn-success" id="zaloPairBtn" onclick="approveZaloPair()">Ghep noi Zalo</button>
       </div>
     </div>
   </div></div>
@@ -485,14 +499,16 @@ async function saveChannels(){
   btn.disabled=true;btn.textContent='Dang luu...';st.className='status loading';st.textContent='Dang cau hinh kenh nhan tin...';
   try{const r=await fetch('/api/channels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({telegram:tg,zalo:zl})});const d=await r.json();
   if(d.ok){st.className='status ok';st.textContent='\\u2705 Da luu kenh nhan tin!';
-    if(tg){
-      // Hien thi phan Telegram pairing code
+    if(tg||zl){
+      // Hien thi phan pairing code tuong ung
       setTimeout(()=>{
         st.className='status';
-        document.getElementById('telegramPairSection').style.display='block';
         document.getElementById('channelBtnRow').style.display='none';
         document.getElementById('channelCards').style.display='none';
         document.getElementById('channelTelegram').style.display='none';
+        document.getElementById('channelZalo').style.display='none';
+        if(tg) document.getElementById('telegramPairSection').style.display='block';
+        if(zl) document.getElementById('zaloPairSection').style.display='block';
       },1500);
     } else {
       setTimeout(()=>{goStep(6);document.getElementById('pairingUrl').textContent=dashboardUrlGlobal},1500);
@@ -501,7 +517,7 @@ async function saveChannels(){
   else{st.className='status fail';st.textContent='\\u274c '+(d.error||'Loi khi luu');btn.disabled=false;btn.textContent='Luu kenh nhan tin'}}
   catch(x){st.className='status fail';st.textContent='\\u274c Loi ket noi server';btn.disabled=false;btn.textContent='Luu kenh nhan tin'}
 }
-function skipTelegramPair(){
+function skipChannelPair(){
   goStep(6);document.getElementById('pairingUrl').textContent=dashboardUrlGlobal;
 }
 async function approveTelegramPair(){
@@ -513,6 +529,16 @@ async function approveTelegramPair(){
   if(d.ok){st.className='status ok';st.textContent='\\u2705 Ghep noi Telegram thanh cong!';setTimeout(()=>{goStep(6);document.getElementById('pairingUrl').textContent=dashboardUrlGlobal},1500)}
   else{st.className='status fail';st.textContent='\\u274c '+(d.error||'Khong the ghep noi');btn.disabled=false;btn.textContent='Ghep noi Telegram'}}
   catch(x){st.className='status fail';st.textContent='\\u274c Loi ket noi server';btn.disabled=false;btn.textContent='Ghep noi Telegram'}
+}
+async function approveZaloPair(){
+  const btn=document.getElementById('zaloPairBtn'),st=document.getElementById('zaloPairStatus');
+  const code=document.getElementById('zaloPairCode').value.trim();
+  if(!code){st.className='status fail';st.textContent='Vui long nhap ma ghep noi';return}
+  btn.disabled=true;btn.textContent='Dang ghep noi...';st.className='status loading';st.textContent='Dang ket noi Zalo bot...';
+  try{const r=await fetch('/api/zalo-pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});const d=await r.json();
+  if(d.ok){st.className='status ok';st.textContent='\\u2705 Ghep noi Zalo thanh cong!';setTimeout(()=>{goStep(6);document.getElementById('pairingUrl').textContent=dashboardUrlGlobal},1500)}
+  else{st.className='status fail';st.textContent='\\u274c '+(d.error||'Khong the ghep noi');btn.disabled=false;btn.textContent='Ghep noi Zalo'}}
+  catch(x){st.className='status fail';st.textContent='\\u274c Loi ket noi server';btn.disabled=false;btn.textContent='Ghep noi Zalo'}
 }
 async function doPairing(){
   const btn=document.getElementById('pairBtn'),st=document.getElementById('pairStatus');
@@ -766,6 +792,32 @@ const server = http.createServer(async (req, res) => {
       try {
         execSync(
           `/opt/openclaw-cli.sh pairing approve telegram ${code.replace(/[^a-zA-Z0-9_-]/g, '')}`,
+          { timeout: 15000, stdio: 'pipe' }
+        );
+        return json(res, 200, { ok: true });
+      } catch (e) {
+        const stderr = e.stderr ? e.stderr.toString() : '';
+        const stdout = e.stdout ? e.stdout.toString() : '';
+        const errMsg = stderr || stdout || e.message;
+        return json(res, 200, { ok: false, error: `Khong the ghep noi: ${errMsg.substring(0, 200)}` });
+      }
+    } catch (e) {
+      return json(res, 500, { ok: false, error: `Loi: ${e.message}` });
+    }
+  }
+
+  // --- API: Zalo Pair (ghep noi Zalo bot bang pairing code) ---
+  if (req.method === 'POST' && url.pathname === '/api/zalo-pair') {
+    if (!isValidSession(req)) return json(res, 401, { ok: false, error: 'Chua dang nhap' });
+    try {
+      const body = await parseBody(req);
+      const code = (body.code || '').trim();
+      if (!code) return json(res, 400, { ok: false, error: 'Thieu ma ghep noi' });
+
+      // Chay lenh pairing approve zalo <code>
+      try {
+        execSync(
+          `/opt/openclaw-cli.sh pairing approve zalo ${code.replace(/[^a-zA-Z0-9_-]/g, '')}`,
           { timeout: 15000, stdio: 'pipe' }
         );
         return json(res, 200, { ok: true });
