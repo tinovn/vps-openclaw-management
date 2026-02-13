@@ -5,11 +5,11 @@ set -euo pipefail
 # OpenClaw - Script cai dat all-in-one (Docker Compose)
 #
 # Usage:
-#   curl -fsSL <url>/install.sh | bash -s -- --mgmt-key <KEY>
-#   bash install.sh --mgmt-key <KEY>
+#   curl -fsSL <url>/install.sh | bash -s -- --mgmt-key <KEY> --domain <DOMAIN>
+#   bash install.sh --mgmt-key <KEY> --domain <DOMAIN>
 #
-# HostBill truyen --mgmt-key de dung API key da luu san.
-# Neu khong truyen, script se tu sinh random key.
+# --mgmt-key  MGMT API key tu HostBill (neu khong truyen se tu sinh)
+# --domain    Ten mien da tro DNS ve VPS (neu co se cau hinh SSL Let's Encrypt)
 # =============================================================================
 
 APP_VERSION="latest"
@@ -20,12 +20,13 @@ MGMT_API_PORT=9998
 LOG_FILE="/var/log/openclaw-install.log"
 
 # --- Parse arguments ---
-# Usage: install.sh [--mgmt-key <key>]
-# HostBill truyen MGMT API key da luu san, neu khong truyen se tu sinh
+# Usage: install.sh [--mgmt-key <key>] [--domain <domain>]
 MGMT_API_KEY_ARG=""
+DOMAIN_ARG=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         --mgmt-key) MGMT_API_KEY_ARG="$2"; shift 2 ;;
+        --domain) DOMAIN_ARG="$2"; shift 2 ;;
         *) shift ;;
     esac
 done
@@ -147,15 +148,29 @@ log "Download docker-compose.yml..."
 curl -fsSL "${REPO_RAW}/docker-compose.yml" -o ${INSTALL_DIR}/docker-compose.yml
 
 # =============================================================================
-# 10. Tao Caddyfile (default: IP + self-signed)
+# 10. Tao Caddyfile
 # =============================================================================
-log "Tao Caddyfile..."
-cat > ${INSTALL_DIR}/Caddyfile << EOF
+if [ -n "${DOMAIN_ARG}" ]; then
+    log "Tao Caddyfile voi domain ${DOMAIN_ARG} + Let's Encrypt SSL..."
+    cat > ${INSTALL_DIR}/Caddyfile << EOF
+${DOMAIN_ARG} {
+    tls {
+        issuer acme {
+            dir https://acme-v02.api.letsencrypt.org/directory
+        }
+    }
+    reverse_proxy openclaw:18789
+}
+EOF
+else
+    log "Tao Caddyfile voi IP + self-signed cert..."
+    cat > ${INSTALL_DIR}/Caddyfile << EOF
 ${DROPLET_IP} {
     tls internal
     reverse_proxy openclaw:18789
 }
 EOF
+fi
 
 # =============================================================================
 # 11. Tao config templates + default config
@@ -334,7 +349,8 @@ apt-get -qqy autoclean
 log "=== Cai dat OpenClaw hoan tat! ==="
 log ""
 log "=========================================="
-log "  Dashboard: https://${DROPLET_IP}?token=${GATEWAY_TOKEN}"
+DASHBOARD_HOST="${DOMAIN_ARG:-${DROPLET_IP}}"
+log "  Dashboard: https://${DASHBOARD_HOST}?token=${GATEWAY_TOKEN}"
 log "  Gateway Token: ${GATEWAY_TOKEN}"
 log ""
 log "  Management API: http://${DROPLET_IP}:${MGMT_API_PORT}"
