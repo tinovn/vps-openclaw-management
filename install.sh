@@ -207,7 +207,8 @@ cat > /etc/openclaw/config/anthropic.json << 'CONFIGEOF'
     "mode": "local",
     "bind": "lan",
     "auth": {
-      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+      "token": "${OPENCLAW_GATEWAY_TOKEN}",
+      "skipDevicePairingForTrustedProxy": true
     },
     "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"]
   },
@@ -237,7 +238,8 @@ cat > /etc/openclaw/config/openai.json << 'CONFIGEOF'
     "mode": "local",
     "bind": "lan",
     "auth": {
-      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+      "token": "${OPENCLAW_GATEWAY_TOKEN}",
+      "skipDevicePairingForTrustedProxy": true
     },
     "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"]
   },
@@ -267,7 +269,8 @@ cat > /etc/openclaw/config/gemini.json << 'CONFIGEOF'
     "mode": "local",
     "bind": "lan",
     "auth": {
-      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+      "token": "${OPENCLAW_GATEWAY_TOKEN}",
+      "skipDevicePairingForTrustedProxy": true
     },
     "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"]
   },
