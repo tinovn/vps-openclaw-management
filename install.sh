@@ -207,10 +207,13 @@ cat > /etc/openclaw/config/anthropic.json << 'CONFIGEOF'
     "mode": "local",
     "bind": "lan",
     "auth": {
-      "token": "${OPENCLAW_GATEWAY_TOKEN}",
-      "skipDevicePairingForTrustedProxy": true
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"]
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "controlUi": {
+      "enabled": true,
+      "allowInsecureAuth": true
+    }
   },
   "browser": {
     "headless": true,
@@ -238,10 +241,13 @@ cat > /etc/openclaw/config/openai.json << 'CONFIGEOF'
     "mode": "local",
     "bind": "lan",
     "auth": {
-      "token": "${OPENCLAW_GATEWAY_TOKEN}",
-      "skipDevicePairingForTrustedProxy": true
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"]
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "controlUi": {
+      "enabled": true,
+      "allowInsecureAuth": true
+    }
   },
   "browser": {
     "headless": true,
@@ -269,10 +275,13 @@ cat > /etc/openclaw/config/gemini.json << 'CONFIGEOF'
     "mode": "local",
     "bind": "lan",
     "auth": {
-      "token": "${OPENCLAW_GATEWAY_TOKEN}",
-      "skipDevicePairingForTrustedProxy": true
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"]
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "controlUi": {
+      "enabled": true,
+      "allowInsecureAuth": true
+    }
   },
   "browser": {
     "headless": true,
