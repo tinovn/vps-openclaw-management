@@ -578,9 +578,16 @@ const server = http.createServer(async (req, res) => {
         return json(res, 500, { ok: false, error: `Template config not found: ${templatePath}` });
       }
 
-      const config = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+      const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
       const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
-      config.gateway.auth.token = token;
+
+      // Preserve existing gateway settings (trustedProxies, controlUi, bind, etc.)
+      let existingGateway = {};
+      try { existingGateway = readConfig().gateway || {}; } catch {}
+
+      const config = { ...template };
+      config.gateway = { ...template.gateway, ...existingGateway };
+      config.gateway.auth = { ...template.gateway.auth, token };
 
       if (model) {
         config.agents.defaults.model.primary = model;
