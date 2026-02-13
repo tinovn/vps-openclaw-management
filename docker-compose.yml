@@ -14,8 +14,9 @@ services:
     environment:
       - NODE_ENV=production
       - HOME=/home/openclaw
+      - OPENCLAW_GATEWAY_BIND=lan
     user: "0:0"
-    command: ["node", "dist/index.js", "gateway", "--bind", "lan", "--port", "18789", "--allow-unconfigured"]
+    command: ["node", "dist/index.js", "gateway", "--port", "18789", "--allow-unconfigured"]
 
   caddy:
     image: caddy:2-alpine
