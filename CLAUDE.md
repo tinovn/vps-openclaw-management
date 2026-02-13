@@ -1,99 +1,133 @@
-# CLAUDE.md - OpenClaw DigitalOcean 1-Click Image
+# CLAUDE.md - OpenClaw Docker Compose Deployment
 
-## Tổng quan dự án
+## Tong quan du an
 
-Đây là công cụ build image **OpenClaw** 1-Click Droplet cho DigitalOcean. Sử dụng Packer để tạo snapshot triển khai một AI assistant gateway tự host, tích hợp nhiều nền tảng nhắn tin (WhatsApp, Telegram, Slack, Discord) với các nhà cung cấp LLM (Anthropic Claude, OpenAI).
+He thong cai dat va quan ly **OpenClaw** tren VPS su dung Docker Compose. Bao gom:
+- **install.sh** — Script cai dat all-in-one (HostBill hook goi qua SSH)
+- **Management API** — REST API de quan ly tu xa (doi model, API key, domain, restart, rebuild, logs...)
 
-Ngoài ra có file **`install.sh`** all-in-one để cài đặt trực tiếp trên bất kỳ Ubuntu VM nào qua cloud-init hoặc chạy thủ công.
+## Cong nghe
 
-## Công nghệ sử dụng
+- **Docker Compose** — Chay OpenClaw + Caddy trong containers
+- **Node.js 22** — Management API runtime (chay tren host)
+- **Caddy** — Reverse proxy + TLS tu dong (container)
+- **UFW / fail2ban** — Tuong lua + chong brute-force
+- **systemd** — Quan ly Management API service
 
-- **Packer** — Tự động hóa build image cho DigitalOcean
-- **Ubuntu 24.04 LTS** — Hệ điều hành nền
-- **Node.js 22** với **pnpm** — Runtime ứng dụng
-- **Caddy** — Reverse proxy với TLS tự động
-- **Docker** — Môi trường sandbox
-- **systemd** — Quản lý dịch vụ
-- **UFW / fail2ban** — Tường lửa và chống xâm nhập
-
-## Cấu trúc thư mục
+## Cau truc thu muc
 
 ```
-clawdbot-24-04/
-├── install.sh                 # ⭐ Script cài đặt all-in-one (dùng cho cloud-init hoặc chạy thủ công)
-├── template.json              # Template build Packer (phiên bản, packages, provisioners)
-├── files/
-│   ├── etc/
-│   │   ├── config/            # Cấu hình nhà cung cấp LLM (anthropic.json, openai.json)
-│   │   ├── setup_wizard.sh    # Trình hướng dẫn cài đặt khi đăng nhập lần đầu
-│   │   └── update-motd.d/     # Banner hiển thị khi SSH
-│   └── var/lib/cloud/scripts/per-instance/
-│       └── 001_onboot         # Script cloud-init chạy lần đầu khởi động (dùng cho Packer)
-└── scripts/
-    └── openclaw.sh            # Script cài đặt chính cho Packer (Node.js, Caddy, OpenClaw, helper scripts)
+OpenClaw/
+├── install.sh                  # Script cai dat all-in-one
+├── docker-compose.yml          # Template Docker Compose (openclaw + caddy)
+├── Caddyfile                   # Template Caddy config
+├── management-api/
+│   └── server.js               # Management API server (port 9998)
+├── config/
+│   ├── anthropic.json          # Template config Anthropic
+│   ├── openai.json             # Template config OpenAI
+│   └── gemini.json             # Template config Gemini
+├── template.json               # Packer template (legacy)
+└── CLAUDE.md
 ```
 
-## Cài đặt nhanh (install.sh)
-
-Trên bất kỳ Ubuntu 24.04 VM nào, chạy:
+## Cai dat
 
 ```bash
-curl -fsSL https://<host>/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main/install.sh | bash
 ```
 
-Hoặc qua cloud-init (`cloud.cfg` hoặc user-data):
+## Tren VPS sau khi cai dat
 
-```yaml
-runcmd:
-  - bash -c 'while pgrep -x apt > /dev/null; do sleep 5; done'
-  - bash -c 'curl -fsSL https://<host>/install.sh | bash > /var/log/openclaw-install.log 2>&1'
+```
+/opt/openclaw/                  # Thu muc chinh
+├── docker-compose.yml
+├── .env                        # Environment vars (tokens, API keys)
+├── Caddyfile
+├── config/
+│   └── openclaw.json           # Config hien tai
+└── data/                       # Persistent data
+
+/opt/openclaw-mgmt/
+└── server.js                   # Management API
+
+/etc/openclaw/config/           # Template configs (khong sua)
+├── anthropic.json
+├── openai.json
+└── gemini.json
 ```
 
-Sau khi cài xong, SSH vào server → setup wizard sẽ tự động chạy để cấu hình AI provider.
+## Management API
 
-## Lệnh build Packer (tạo DigitalOcean snapshot)
+**Port**: 9998 | **Auth**: `Authorization: Bearer <OPENCLAW_MGMT_API_KEY>`
 
-Yêu cầu biến môi trường `DIGITALOCEAN_API_TOKEN` và Packer >= 1.7.0.
+### Endpoints
+
+| Method | Path | Mo ta |
+|--------|------|-------|
+| `GET` | `/api/info` | Thong tin service (domain, IP, token, status) |
+| `GET` | `/api/status` | Trang thai container |
+| `GET` | `/api/domain` | Xem domain config |
+| `PUT` | `/api/domain` | Doi domain + SSL |
+| `GET` | `/api/version` | Version + image info |
+| `POST` | `/api/upgrade` | Pull image moi + recreate |
+| `POST` | `/api/restart` | Restart container |
+| `POST` | `/api/stop` | Stop container |
+| `POST` | `/api/start` | Start container |
+| `POST` | `/api/rebuild` | Down + Up (recreate) |
+| `POST` | `/api/reset` | Xoa data, tao lai tu dau |
+| `GET` | `/api/logs` | Container logs |
+| `GET` | `/api/config` | Xem config (model, provider, keys masked) |
+| `PUT` | `/api/config/provider` | Doi provider + model |
+| `PUT` | `/api/config/api-key` | Doi API key |
+| `POST` | `/api/config/test-key` | Test API key |
+| `GET` | `/api/channels` | List kenh nhan tin |
+| `PUT` | `/api/channels/:ch` | Them/sua kenh |
+| `DELETE` | `/api/channels/:ch` | Xoa kenh |
+| `GET` | `/api/env` | Xem env vars |
+| `PUT` | `/api/env/:key` | Set env var |
+| `DELETE` | `/api/env/:key` | Xoa env var |
+| `GET` | `/api/system` | System info |
+| `POST` | `/api/cli` | Proxy CLI commands vao container |
+
+### Vi du su dung
 
 ```bash
-# Từ thư mục cha (droplet-1-clicks/)
-make build-clawdbot-24-04
-make validate-clawdbot-24-04
+MGMT_KEY=$(grep OPENCLAW_MGMT_API_KEY /opt/openclaw/.env | cut -d= -f2)
 
-# Lệnh Packer trực tiếp
-packer build clawdbot-24-04/template.json
-PACKER_LOG=1 packer build clawdbot-24-04/template.json   # bật log debug
-packer build -on-error=ask clawdbot-24-04/template.json   # hỏi khi gặp lỗi
+# Xem status
+curl -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/status
+
+# Doi model
+curl -X PUT -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
+  -d '{"provider":"anthropic","model":"anthropic/claude-sonnet-4-20250514"}' \
+  http://localhost:9998/api/config/provider
+
+# Rebuild
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/rebuild
+
+# CLI proxy
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
+  -d '{"command":"models scan"}' http://localhost:9998/api/cli
 ```
 
-## Cấu hình quan trọng
+## Quy uoc
 
-- **template.json** — Template Packer: phiên bản image (`v2026.2.3`), kích thước instance (`s-1vcpu-2gb`), region (`nyc3`), các bước provisioning
-- **install.sh** — Script cài đặt all-in-one: gộp mọi thứ (apt, firewall, Node.js, Caddy, clone/build, config, helper scripts, token, MOTD, wizard)
-- **files/etc/config/*.json** — Cấu hình nhà cung cấp LLM (Anthropic, OpenAI) với thiết lập model, sandbox và xác thực gateway
-- **scripts/openclaw.sh** — Script cài đặt cho Packer: tường lửa, Node.js, Caddy, clone/build OpenClaw, helper scripts, Homebrew + wacli
+- Docker image: `ghcr.io/openclaw/openclaw:latest`
+- Gateway port: 18789 (trong Docker network, Caddy proxy ra 80/443)
+- Management API port: 9998 (tren host, systemd)
+- Tokens: 64-char hex, sinh bang `openssl rand -hex 32`
+- Config templates luu tai `/etc/openclaw/config/` (khong sua)
+- Config hien tai tai `/opt/openclaw/config/openclaw.json`
+- Khong commit API key hoac token that
 
-## Quy ước
+## Lenh Docker thuong dung (tren VPS)
 
-- Phiên bản ứng dụng được theo dõi trong `template.json` tại trường `application_version`
-- Ứng dụng OpenClaw được clone từ `github.com/openclaw/openclaw` và build bằng `pnpm install --frozen-lockfile && pnpm build`
-- Gateway chạy trên port 18789 phía sau Caddy reverse proxy
-- File cấu hình sử dụng cú pháp `${ENV_VAR}` để thay thế giá trị lúc runtime
-- Các helper scripts được tạo trong `/opt/` trên droplet đã triển khai
-- User hệ thống `openclaw` sở hữu ứng dụng với quyền hạn chế (0700 cho thư mục cấu hình)
-
-## Scripts quản lý (trên Droplet đã triển khai)
-
-- `/opt/restart-openclaw.sh` — Khởi động lại dịch vụ
-- `/opt/status-openclaw.sh` — Xem trạng thái và gateway token
-- `/opt/update-openclaw.sh` — Cập nhật lên phiên bản mới nhất
-- `/opt/openclaw-cli.sh` — Chạy lệnh CLI
-- `/opt/openclaw-tui.sh` — Giao diện Terminal UI
-- `/opt/setup-openclaw-domain.sh` — Cấu hình tên miền riêng với HTTPS
-
-## Lưu ý quan trọng
-
-- Không bao giờ commit API key hoặc token thật; chỉ sử dụng giá trị placeholder
-- Gateway token được tự động tạo (64 ký tự hex) khi khởi động lần đầu qua `001_onboot`
-- Caddy tự động xử lý TLS thông qua Let's Encrypt khi cấu hình tên miền
-- Trình hướng dẫn cài đặt (`setup_wizard.sh`) chạy khi SSH lần đầu và cấu hình nhà cung cấp AI
+```bash
+cd /opt/openclaw
+docker compose logs -f              # Xem logs
+docker compose restart openclaw     # Restart
+docker compose pull && docker compose up -d  # Upgrade
+docker compose down                 # Stop tat ca
+docker compose exec openclaw node dist/index.js <command>  # CLI
+```

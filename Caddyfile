@@ -1,0 +1,4 @@
+{$DOMAIN:localhost} {
+    tls {$TLS_MODE:internal}
+    reverse_proxy openclaw:18789
+}
