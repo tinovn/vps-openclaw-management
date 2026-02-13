@@ -205,6 +205,7 @@ cat > /etc/openclaw/config/anthropic.json << 'CONFIGEOF'
   },
   "gateway": {
     "mode": "local",
+    "bind": "lan",
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
@@ -234,6 +235,7 @@ cat > /etc/openclaw/config/openai.json << 'CONFIGEOF'
   },
   "gateway": {
     "mode": "local",
+    "bind": "lan",
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
@@ -263,6 +265,7 @@ cat > /etc/openclaw/config/gemini.json << 'CONFIGEOF'
   },
   "gateway": {
     "mode": "local",
+    "bind": "lan",
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },

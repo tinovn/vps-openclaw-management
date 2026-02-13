@@ -12,6 +12,7 @@
   },
   "gateway": {
     "mode": "local",
+    "bind": "lan",
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
