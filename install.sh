@@ -3,7 +3,13 @@ set -euo pipefail
 
 # =============================================================================
 # OpenClaw - Script cai dat all-in-one (Docker Compose)
-# HostBill hook: curl -fsSL <url>/install.sh | bash
+#
+# Usage:
+#   curl -fsSL <url>/install.sh | bash -s -- --mgmt-key <KEY>
+#   bash install.sh --mgmt-key <KEY>
+#
+# HostBill truyen --mgmt-key de dung API key da luu san.
+# Neu khong truyen, script se tu sinh random key.
 # =============================================================================
 
 APP_VERSION="latest"
@@ -12,6 +18,17 @@ INSTALL_DIR="/opt/openclaw"
 MGMT_API_DIR="/opt/openclaw-mgmt"
 MGMT_API_PORT=9998
 LOG_FILE="/var/log/openclaw-install.log"
+
+# --- Parse arguments ---
+# Usage: install.sh [--mgmt-key <key>]
+# HostBill truyen MGMT API key da luu san, neu khong truyen se tu sinh
+MGMT_API_KEY_ARG=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --mgmt-key) MGMT_API_KEY_ARG="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
 
 # --- Logging ---
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
@@ -83,7 +100,13 @@ mkdir -p ${MGMT_API_DIR}
 # =============================================================================
 log "Sinh gateway token va management API key..."
 GATEWAY_TOKEN=$(openssl rand -hex 32)
-MGMT_API_KEY=$(openssl rand -hex 32)
+if [ -n "${MGMT_API_KEY_ARG}" ]; then
+    MGMT_API_KEY="${MGMT_API_KEY_ARG}"
+    log "Su dung MGMT API key tu HostBill."
+else
+    MGMT_API_KEY=$(openssl rand -hex 32)
+    log "Tu sinh MGMT API key."
+fi
 
 # =============================================================================
 # 8. Tao file .env
