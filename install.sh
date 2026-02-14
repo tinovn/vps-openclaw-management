@@ -48,8 +48,9 @@ systemctl kill --kill-who=all apt-daily.service apt-daily-upgrade.service unatte
 killall -9 unattended-upgr apt apt-get dpkg 2>/dev/null || true
 sleep 3
 
-# Giai phong lock files
+# Giai phong lock files + xoa dpkg updates corrupt
 rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null || true
+rm -f /var/lib/dpkg/updates/* 2>/dev/null || true
 dpkg --configure -a 2>/dev/null || true
 
 is_apt_locked() {
@@ -135,6 +136,7 @@ apt_retry() {
         log "apt command failed, retry ${i}/${retries}..."
         killall -9 apt apt-get dpkg 2>/dev/null || true
         rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null || true
+        rm -f /var/lib/dpkg/updates/* 2>/dev/null || true
         dpkg --configure -a 2>/dev/null || true
         sleep 5
     done
