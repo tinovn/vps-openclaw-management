@@ -122,12 +122,30 @@ fi
 # =============================================================================
 log "Cap nhat he thong..."
 export DEBIAN_FRONTEND=noninteractive
-wait_for_apt
-dpkg --configure -a 2>/dev/null || true
-wait_for_apt
-apt-get -qqy update
-apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' full-upgrade
-apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' install \
+
+apt_retry() {
+    local retries=3
+    local i=0
+    while [ $i -lt $retries ]; do
+        wait_for_apt
+        if "$@"; then
+            return 0
+        fi
+        i=$((i + 1))
+        log "apt command failed, retry ${i}/${retries}..."
+        killall -9 apt apt-get dpkg 2>/dev/null || true
+        rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null || true
+        dpkg --configure -a 2>/dev/null || true
+        sleep 5
+    done
+    log "LOI: apt command that bai sau ${retries} lan thu."
+    return 1
+}
+
+apt_retry dpkg --configure -a
+apt_retry apt-get -qqy update
+apt_retry apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' full-upgrade
+apt_retry apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' install \
     curl ca-certificates gnupg ufw fail2ban jq dnsutils
 
 # =============================================================================
