@@ -153,18 +153,24 @@ function writeAuthProfiles(profiles) {
 function setAuthProfileApiKey(providerName, apiKey) {
   const data = readAuthProfiles();
   data.profiles = data.profiles || {};
-  data.profiles[providerName] = {
+  // OpenClaw auth-profiles format: type="api_key", key=<value>, provider=<name>
+  // Profile ID uses "<provider>:manual" convention
+  const profileId = `${providerName}:manual`;
+  data.profiles[profileId] = {
+    type: 'api_key',
     provider: providerName,
-    auth: 'api-key',
-    apiKey: apiKey
+    key: apiKey
   };
   writeAuthProfiles(data);
 }
 
 function getAuthProfileApiKey(providerName) {
   const data = readAuthProfiles();
-  const profile = (data.profiles || {})[providerName];
-  if (profile && profile.apiKey) return profile.apiKey;
+  const profiles = data.profiles || {};
+  // Check both "<provider>:manual" and "<provider>" profile IDs
+  for (const [id, profile] of Object.entries(profiles)) {
+    if (profile && profile.provider === providerName && profile.key) return profile.key;
+  }
   return null;
 }
 
@@ -594,9 +600,6 @@ const server = http.createServer(async (req, res) => {
         apiKeys,
         config: {
           agents: config.agents,
-          models: config.models ? { providers: Object.fromEntries(
-            Object.entries(config.models.providers || {}).map(([k, v]) => [k, { ...v, apiKey: v.apiKey ? '***' : undefined }])
-          ) } : undefined,
           gateway: { ...config.gateway, auth: { token: '***' } },
           browser: config.browser
         }
@@ -635,24 +638,12 @@ const server = http.createServer(async (req, res) => {
       config.gateway = { ...template.gateway, ...(existingConfig.gateway || {}) };
       config.gateway.auth = { ...template.gateway.auth, token };
 
-      // Preserve and merge models.providers (keep API keys for all providers)
-      const existingProviders = (existingConfig.models && existingConfig.models.providers) || {};
-      const templateProviders = (template.models && template.models.providers) || {};
-      config.models = { ...(template.models || {}), ...(existingConfig.models || {}) };
-      config.models.providers = { ...existingProviders, ...templateProviders };
-
-      // Ensure the new provider has an apiKey reference
-      const authProvider = providerConfig.authProfileProvider;
-      if (!config.models.providers[authProvider]) {
-        config.models.providers[authProvider] = {};
-      }
-      config.models.providers[authProvider].apiKey = `$${providerConfig.envKey}`;
-
       if (model) {
         config.agents.defaults.model.primary = model;
       }
 
-      // If there's an API key in env, also write auth-profiles.json
+      // Write auth-profiles.json if there's an API key in env for this provider
+      const authProvider = providerConfig.authProfileProvider;
       const existingKey = getEnvValue(providerConfig.envKey);
       if (existingKey) {
         setAuthProfileApiKey(authProvider, existingKey);
@@ -677,23 +668,11 @@ const server = http.createServer(async (req, res) => {
       if (!providerConfig) return json(res, 400, { ok: false, error: 'Invalid provider' });
       if (!apiKey) return json(res, 400, { ok: false, error: 'Missing apiKey' });
 
-      // 1. Set env var (for $ENV_VAR reference in config)
+      // 1. Set env var (as fallback)
       setEnvValue(providerConfig.envKey, apiKey);
 
-      // 2. Write auth-profiles.json (direct API key storage)
+      // 2. Write auth-profiles.json (primary API key storage for OpenClaw)
       setAuthProfileApiKey(providerConfig.authProfileProvider, apiKey);
-
-      // 3. Ensure models.providers in openclaw.json references the env var
-      try {
-        const config = readConfig();
-        if (!config.models) config.models = {};
-        if (!config.models.providers) config.models.providers = {};
-        if (!config.models.providers[providerConfig.authProfileProvider]) {
-          config.models.providers[providerConfig.authProfileProvider] = {};
-        }
-        config.models.providers[providerConfig.authProfileProvider].apiKey = `$${providerConfig.envKey}`;
-        writeConfig(config);
-      } catch {}
 
       restartContainer('openclaw');
 

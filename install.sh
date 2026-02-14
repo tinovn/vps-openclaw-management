@@ -203,13 +203,6 @@ cat > /etc/openclaw/config/anthropic.json << 'CONFIGEOF'
       }
     }
   },
-  "models": {
-    "providers": {
-      "anthropic": {
-        "apiKey": "$ANTHROPIC_API_KEY"
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
@@ -244,13 +237,6 @@ cat > /etc/openclaw/config/openai.json << 'CONFIGEOF'
       }
     }
   },
-  "models": {
-    "providers": {
-      "openai": {
-        "apiKey": "$OPENAI_API_KEY"
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
@@ -282,13 +268,6 @@ cat > /etc/openclaw/config/gemini.json << 'CONFIGEOF'
       "maxConcurrent": 4,
       "subagents": {
         "maxConcurrent": 8
-      }
-    }
-  },
-  "models": {
-    "providers": {
-      "google": {
-        "apiKey": "$GEMINI_API_KEY"
       }
     }
   },

@@ -10,13 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "google": {
-        "apiKey": "$GEMINI_API_KEY"
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

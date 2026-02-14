@@ -10,13 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "openai": {
-        "apiKey": "$OPENAI_API_KEY"
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
