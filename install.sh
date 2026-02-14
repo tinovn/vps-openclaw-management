@@ -221,6 +221,7 @@ cat > /etc/openclaw/config/anthropic.json << 'CONFIGEOF'
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
+    "skipDevicePairingForTrustedProxy": true,
     "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
@@ -255,6 +256,7 @@ cat > /etc/openclaw/config/openai.json << 'CONFIGEOF'
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
+    "skipDevicePairingForTrustedProxy": true,
     "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
@@ -289,6 +291,7 @@ cat > /etc/openclaw/config/gemini.json << 'CONFIGEOF'
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
+    "skipDevicePairingForTrustedProxy": true,
     "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
@@ -308,6 +311,7 @@ cp /etc/openclaw/config/anthropic.json ${INSTALL_DIR}/config/openclaw.json
 # Thay the placeholder token bang token thuc, them plugins mac dinh (zalo)
 jq --arg token "${GATEWAY_TOKEN}" '
   .gateway.auth.token = $token |
+  .gateway.skipDevicePairingForTrustedProxy = true |
   .plugins = { "entries": { "zalo": { "enabled": true } } }
 ' ${INSTALL_DIR}/config/openclaw.json > ${INSTALL_DIR}/config/openclaw.json.tmp
 mv ${INSTALL_DIR}/config/openclaw.json.tmp ${INSTALL_DIR}/config/openclaw.json
