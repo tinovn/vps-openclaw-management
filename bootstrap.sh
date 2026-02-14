@@ -7,7 +7,7 @@
 #
 # Flow:
 #   1. Doi cloud-init hoan tat
-#   2. Tai install.sh ve /tmp
+#   2. Tai install.sh ve /opt/openclaw/
 #   3. Tao systemd one-shot service de chay install.sh sau reboot
 #   4. Reboot VPS
 #   5. Sau reboot, systemd chay install.sh, xong thi tu disable service
@@ -16,10 +16,14 @@
 # =============================================================================
 
 REPO_RAW="https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main"
-INSTALL_SCRIPT="/tmp/openclaw-install.sh"
-INSTALL_ARGS="/tmp/openclaw-install.args"
+BOOTSTRAP_DIR="/opt/openclaw"
+INSTALL_SCRIPT="${BOOTSTRAP_DIR}/openclaw-install.sh"
+INSTALL_ARGS="${BOOTSTRAP_DIR}/openclaw-install.args"
 LOG_FILE="/var/log/openclaw-install.log"
 SERVICE_NAME="openclaw-install"
+
+# Tao thu muc truoc
+mkdir -p "$BOOTSTRAP_DIR"
 
 # Luu arguments vao file de systemd doc lai sau reboot
 echo "$*" > "$INSTALL_ARGS"
@@ -63,12 +67,12 @@ cat > /etc/systemd/system/${SERVICE_NAME}.service << 'SERVICEEOF'
 Description=OpenClaw Post-Reboot Installer
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=/tmp/openclaw-install.sh
+ConditionPathExists=/opt/openclaw/openclaw-install.sh
 
 [Service]
 Type=oneshot
 Environment=DEBIAN_FRONTEND=noninteractive
-ExecStart=/bin/bash -c '/tmp/openclaw-install.sh $(cat /tmp/openclaw-install.args) >> /var/log/openclaw-install.log 2>&1; systemctl disable openclaw-install.service; rm -f /etc/systemd/system/openclaw-install.service /tmp/openclaw-install.args; systemctl daemon-reload'
+ExecStart=/bin/bash -c '/opt/openclaw/openclaw-install.sh $(cat /opt/openclaw/openclaw-install.args) >> /var/log/openclaw-install.log 2>&1; systemctl disable openclaw-install.service; rm -f /etc/systemd/system/openclaw-install.service /opt/openclaw/openclaw-install.sh /opt/openclaw/openclaw-install.args; systemctl daemon-reload'
 RemainAfterExit=false
 TimeoutStartSec=900
 
