@@ -17,6 +17,8 @@ const CONFIG_DIR = `${COMPOSE_DIR}/config`;
 const ENV_FILE = `${COMPOSE_DIR}/.env`;
 const CADDYFILE = `${COMPOSE_DIR}/Caddyfile`;
 const TEMPLATES_DIR = '/etc/openclaw/config';
+const AUTH_PROFILES_DIR = `${CONFIG_DIR}/agents/main/agent`;
+const AUTH_PROFILES_FILE = `${AUTH_PROFILES_DIR}/auth-profiles.json`;
 
 const MAX_AUTH_FAILURES = 10;
 const BLOCK_DURATION = 15 * 60 * 1000;
@@ -134,6 +136,38 @@ function writeConfig(config) {
   fs.writeFileSync(`${CONFIG_DIR}/openclaw.json`, JSON.stringify(config, null, 2), 'utf8');
 }
 
+// --- Auth profiles helpers ---
+function readAuthProfiles() {
+  try {
+    return JSON.parse(fs.readFileSync(AUTH_PROFILES_FILE, 'utf8'));
+  } catch {
+    return { profiles: {} };
+  }
+}
+
+function writeAuthProfiles(profiles) {
+  fs.mkdirSync(AUTH_PROFILES_DIR, { recursive: true });
+  fs.writeFileSync(AUTH_PROFILES_FILE, JSON.stringify(profiles, null, 2), 'utf8');
+}
+
+function setAuthProfileApiKey(providerName, apiKey) {
+  const data = readAuthProfiles();
+  data.profiles = data.profiles || {};
+  data.profiles[providerName] = {
+    provider: providerName,
+    auth: 'api-key',
+    apiKey: apiKey
+  };
+  writeAuthProfiles(data);
+}
+
+function getAuthProfileApiKey(providerName) {
+  const data = readAuthProfiles();
+  const profile = (data.profiles || {})[providerName];
+  if (profile && profile.apiKey) return profile.apiKey;
+  return null;
+}
+
 // --- Route matching ---
 function route(req, method, path) {
   if (req.method !== method) return null;
@@ -149,6 +183,7 @@ const PROVIDERS = {
   anthropic: {
     name: 'Anthropic',
     envKey: 'ANTHROPIC_API_KEY',
+    authProfileProvider: 'anthropic',
     configTemplate: `${TEMPLATES_DIR}/anthropic.json`,
     testFn: (apiKey) => {
       try {
@@ -164,6 +199,7 @@ const PROVIDERS = {
   openai: {
     name: 'OpenAI',
     envKey: 'OPENAI_API_KEY',
+    authProfileProvider: 'openai',
     configTemplate: `${TEMPLATES_DIR}/openai.json`,
     testFn: (apiKey) => {
       try {
@@ -175,7 +211,8 @@ const PROVIDERS = {
   },
   gemini: {
     name: 'Google Gemini',
-    envKey: 'GOOGLE_API_KEY',
+    envKey: 'GEMINI_API_KEY',
+    authProfileProvider: 'google',
     configTemplate: `${TEMPLATES_DIR}/gemini.json`,
     testFn: (apiKey) => {
       try {
@@ -543,7 +580,10 @@ const server = http.createServer(async (req, res) => {
 
       const apiKeys = {};
       for (const [id, p] of Object.entries(PROVIDERS)) {
-        const val = getEnvValue(p.envKey);
+        // Check env var first, then auth-profiles.json
+        const envVal = getEnvValue(p.envKey);
+        const profileVal = getAuthProfileApiKey(p.authProfileProvider);
+        const val = envVal || profileVal;
         apiKeys[id] = val ? sanitizeKey(val) : null;
       }
 
@@ -554,6 +594,9 @@ const server = http.createServer(async (req, res) => {
         apiKeys,
         config: {
           agents: config.agents,
+          models: config.models ? { providers: Object.fromEntries(
+            Object.entries(config.models.providers || {}).map(([k, v]) => [k, { ...v, apiKey: v.apiKey ? '***' : undefined }])
+          ) } : undefined,
           gateway: { ...config.gateway, auth: { token: '***' } },
           browser: config.browser
         }
@@ -569,11 +612,12 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const { provider, model } = body;
 
-      if (!PROVIDERS[provider]) {
+      const providerConfig = PROVIDERS[provider];
+      if (!providerConfig) {
         return json(res, 400, { ok: false, error: 'Invalid provider. Use: anthropic, openai, gemini' });
       }
 
-      const templatePath = PROVIDERS[provider].configTemplate;
+      const templatePath = providerConfig.configTemplate;
       if (!fs.existsSync(templatePath)) {
         return json(res, 500, { ok: false, error: `Template config not found: ${templatePath}` });
       }
@@ -581,16 +625,37 @@ const server = http.createServer(async (req, res) => {
       const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
       const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
 
-      // Preserve existing gateway settings (trustedProxies, controlUi, bind, etc.)
-      let existingGateway = {};
-      try { existingGateway = readConfig().gateway || {}; } catch {}
+      // Preserve existing settings from current config
+      let existingConfig = {};
+      try { existingConfig = readConfig(); } catch {}
 
       const config = { ...template };
-      config.gateway = { ...template.gateway, ...existingGateway };
+
+      // Preserve gateway settings (trustedProxies, controlUi, bind, etc.)
+      config.gateway = { ...template.gateway, ...(existingConfig.gateway || {}) };
       config.gateway.auth = { ...template.gateway.auth, token };
+
+      // Preserve and merge models.providers (keep API keys for all providers)
+      const existingProviders = (existingConfig.models && existingConfig.models.providers) || {};
+      const templateProviders = (template.models && template.models.providers) || {};
+      config.models = { ...(template.models || {}), ...(existingConfig.models || {}) };
+      config.models.providers = { ...existingProviders, ...templateProviders };
+
+      // Ensure the new provider has an apiKey reference
+      const authProvider = providerConfig.authProfileProvider;
+      if (!config.models.providers[authProvider]) {
+        config.models.providers[authProvider] = {};
+      }
+      config.models.providers[authProvider].apiKey = `$${providerConfig.envKey}`;
 
       if (model) {
         config.agents.defaults.model.primary = model;
+      }
+
+      // If there's an API key in env, also write auth-profiles.json
+      const existingKey = getEnvValue(providerConfig.envKey);
+      if (existingKey) {
+        setAuthProfileApiKey(authProvider, existingKey);
       }
 
       writeConfig(config);
@@ -608,10 +673,28 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const { provider, apiKey } = body;
 
-      if (!PROVIDERS[provider]) return json(res, 400, { ok: false, error: 'Invalid provider' });
+      const providerConfig = PROVIDERS[provider];
+      if (!providerConfig) return json(res, 400, { ok: false, error: 'Invalid provider' });
       if (!apiKey) return json(res, 400, { ok: false, error: 'Missing apiKey' });
 
-      setEnvValue(PROVIDERS[provider].envKey, apiKey);
+      // 1. Set env var (for $ENV_VAR reference in config)
+      setEnvValue(providerConfig.envKey, apiKey);
+
+      // 2. Write auth-profiles.json (direct API key storage)
+      setAuthProfileApiKey(providerConfig.authProfileProvider, apiKey);
+
+      // 3. Ensure models.providers in openclaw.json references the env var
+      try {
+        const config = readConfig();
+        if (!config.models) config.models = {};
+        if (!config.models.providers) config.models.providers = {};
+        if (!config.models.providers[providerConfig.authProfileProvider]) {
+          config.models.providers[providerConfig.authProfileProvider] = {};
+        }
+        config.models.providers[providerConfig.authProfileProvider].apiKey = `$${providerConfig.envKey}`;
+        writeConfig(config);
+      } catch {}
+
       restartContainer('openclaw');
 
       return json(res, 200, { ok: true, provider, apiKey: sanitizeKey(apiKey) });

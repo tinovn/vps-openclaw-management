@@ -143,7 +143,7 @@ OPENCLAW_MGMT_API_KEY=${MGMT_API_KEY}
 # AI Provider API Keys (uncomment va dien)
 # ANTHROPIC_API_KEY=your_key_here
 # OPENAI_API_KEY=your_key_here
-# GOOGLE_API_KEY=your_key_here
+# GEMINI_API_KEY=your_key_here
 
 # Messaging Channels (uncomment va dien)
 # TELEGRAM_BOT_TOKEN=your_token_here
@@ -203,6 +203,13 @@ cat > /etc/openclaw/config/anthropic.json << 'CONFIGEOF'
       }
     }
   },
+  "models": {
+    "providers": {
+      "anthropic": {
+        "apiKey": "$ANTHROPIC_API_KEY"
+      }
+    }
+  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
@@ -234,6 +241,13 @@ cat > /etc/openclaw/config/openai.json << 'CONFIGEOF'
       "maxConcurrent": 4,
       "subagents": {
         "maxConcurrent": 8
+      }
+    }
+  },
+  "models": {
+    "providers": {
+      "openai": {
+        "apiKey": "$OPENAI_API_KEY"
       }
     }
   },
@@ -271,6 +285,13 @@ cat > /etc/openclaw/config/gemini.json << 'CONFIGEOF'
       }
     }
   },
+  "models": {
+    "providers": {
+      "google": {
+        "apiKey": "$GEMINI_API_KEY"
+      }
+    }
+  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
@@ -297,6 +318,9 @@ cp /etc/openclaw/config/anthropic.json ${INSTALL_DIR}/config/openclaw.json
 jq --arg token "${GATEWAY_TOKEN}" '.gateway.auth.token = $token' \
     ${INSTALL_DIR}/config/openclaw.json > ${INSTALL_DIR}/config/openclaw.json.tmp
 mv ${INSTALL_DIR}/config/openclaw.json.tmp ${INSTALL_DIR}/config/openclaw.json
+
+# Tao thu muc auth-profiles (de Management API co the ghi API keys)
+mkdir -p ${INSTALL_DIR}/config/agents/main/agent
 
 # =============================================================================
 # 12. Pull images va start containers
