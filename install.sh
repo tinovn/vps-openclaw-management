@@ -122,6 +122,7 @@ fi
 # =============================================================================
 log "Cap nhat he thong..."
 export DEBIAN_FRONTEND=noninteractive
+dpkg --configure -a 2>/dev/null || true
 apt-get -qqy update
 apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' full-upgrade
 apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' install \
