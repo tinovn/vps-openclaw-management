@@ -39,23 +39,37 @@ log "=== Bat dau cai dat OpenClaw (Docker Compose) ==="
 # =============================================================================
 # 1. Tat unattended-upgrades + doi apt lock
 # =============================================================================
-log "Tat unattended-upgrades..."
+log "Tat unattended-upgrades va apt-daily..."
 systemctl stop unattended-upgrades 2>/dev/null || true
 systemctl disable unattended-upgrades 2>/dev/null || true
+systemctl stop apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+systemctl disable apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+systemctl kill --kill-who=all apt-daily.service apt-daily-upgrade.service unattended-upgrades.service 2>/dev/null || true
 killall -9 unattended-upgr apt apt-get dpkg 2>/dev/null || true
-sleep 2
+sleep 3
 
-# Giai phong lock files neu con sot
-rm -f /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null || true
+# Giai phong lock files
+rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null || true
 dpkg --configure -a 2>/dev/null || true
 
+is_apt_locked() {
+    # Dung lsof neu co, fallback sang thu apt-get
+    if command -v lsof &>/dev/null; then
+        lsof /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null | grep -q .
+        return $?
+    fi
+    # Fallback: thu chay apt-get, neu lock thi exit code != 0
+    if apt-get check -qq 2>&1 | grep -q "Could not get lock"; then
+        return 0  # locked
+    fi
+    return 1  # not locked
+}
+
 wait_for_apt() {
-    local max_wait=60
+    local max_wait=120
     local waited=0
     while [ $waited -lt $max_wait ]; do
-        if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
-           fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
-           fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
+        if is_apt_locked; then
             log "apt/dpkg van dang chay. Doi 5 giay... (${waited}s/${max_wait}s)"
             sleep 5
             waited=$((waited + 5))
@@ -65,8 +79,9 @@ wait_for_apt() {
     done
     log "Canh bao: apt lock van con sau ${max_wait}s, thu giai phong..."
     killall -9 apt apt-get dpkg unattended-upgr 2>/dev/null || true
-    rm -f /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null || true
+    rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null || true
     dpkg --configure -a 2>/dev/null || true
+    sleep 2
 }
 
 log "Doi apt lock..."
