@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- Logging ---
-log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 
 log "=== Bat dau cai dat OpenClaw (Docker Compose) ==="
 

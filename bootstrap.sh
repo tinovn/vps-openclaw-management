@@ -24,8 +24,7 @@ if curl -fsSL "${REPO_RAW}/install.sh" -o "$INSTALL_SCRIPT"; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Bootstrap: Da tai xong. Chay install ngam..." | tee -a "$LOG_FILE"
 
     # Chay ngam — return ngay cho QemuAgent
-    # install.sh da tu ghi log qua tee, chi redirect stderr
-    nohup bash "$INSTALL_SCRIPT" $ARGS 2>> "$LOG_FILE" &
+    nohup bash "$INSTALL_SCRIPT" $ARGS >> "$LOG_FILE" 2>&1 &
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Bootstrap: Install PID=$! dang chay ngam." | tee -a "$LOG_FILE"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Bootstrap: Theo doi: tail -f $LOG_FILE" | tee -a "$LOG_FILE"
