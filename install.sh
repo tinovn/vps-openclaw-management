@@ -97,15 +97,9 @@ if [ -n "${DOMAIN_ARG}" ]; then
     log "Doi DNS ${DOMAIN_ARG} resolve ve ${DROPLET_IP}..."
 
     while [ $DNS_WAITED -lt $DNS_MAX_WAIT ]; do
-        # Query DNS public (8.8.8.8) truc tiep, tranh /etc/hosts tra ve 127.0.1.1
-        RESOLVED=""
-        if command -v dig &>/dev/null; then
-            RESOLVED=$(dig +short A "${DOMAIN_ARG}" @8.8.8.8 2>/dev/null | grep -E '^[0-9]+\.' | head -1)
-        elif command -v host &>/dev/null; then
-            RESOLVED=$(host "${DOMAIN_ARG}" 8.8.8.8 2>/dev/null | grep "has address" | head -1 | awk '{print $NF}')
-        elif command -v nslookup &>/dev/null; then
-            RESOLVED=$(nslookup "${DOMAIN_ARG}" 8.8.8.8 2>/dev/null | awk '/^Address: / && !/8.8.8.8/ {print $2; exit}')
-        fi
+        # Query DNS qua Cloudflare DoH (curl luon co san)
+        RESOLVED=$(curl -sf "https://1.1.1.1/dns-query?name=${DOMAIN_ARG}&type=A" -H "accept: application/dns-json" 2>/dev/null \
+            | grep -oE '"data":"[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"' | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
 
         if [ "${RESOLVED}" = "${DROPLET_IP}" ]; then
             log "DNS OK: ${DOMAIN_ARG} -> ${DROPLET_IP}"
