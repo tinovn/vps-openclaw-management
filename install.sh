@@ -37,28 +37,34 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 log "=== Bat dau cai dat OpenClaw (Docker Compose) ==="
 
 # =============================================================================
-# 1. Doi apt lock
+# 1. Tat unattended-upgrades + doi apt lock
 # =============================================================================
+log "Tat unattended-upgrades..."
+systemctl stop unattended-upgrades 2>/dev/null || true
+systemctl disable unattended-upgrades 2>/dev/null || true
+killall -9 unattended-upgr apt apt-get dpkg 2>/dev/null || true
+sleep 2
+
+# Giai phong lock files neu con sot
+rm -f /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null || true
+dpkg --configure -a 2>/dev/null || true
+
 wait_for_apt() {
-    local max_wait=120
+    local max_wait=60
     local waited=0
     while [ $waited -lt $max_wait ]; do
         if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
            fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
            fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
-            log "apt/dpkg dang chay. Doi 5 giay... (${waited}s/${max_wait}s)"
+            log "apt/dpkg van dang chay. Doi 5 giay... (${waited}s/${max_wait}s)"
             sleep 5
             waited=$((waited + 5))
         else
             return 0
         fi
     done
-    # Neu doi qua lau, stop unattended-upgrades va giai phong lock
-    log "Doi qua lau. Dung unattended-upgrades..."
-    systemctl stop unattended-upgrades 2>/dev/null || true
-    killall -9 unattended-upgr 2>/dev/null || true
-    sleep 2
-    # Xoa lock files neu van con
+    log "Canh bao: apt lock van con sau ${max_wait}s, thu giai phong..."
+    killall -9 apt apt-get dpkg unattended-upgr 2>/dev/null || true
     rm -f /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null || true
     dpkg --configure -a 2>/dev/null || true
 }
