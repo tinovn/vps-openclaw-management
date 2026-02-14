@@ -88,6 +88,42 @@ log "Doi apt lock..."
 wait_for_apt
 
 # =============================================================================
+# 1b. Doi DNS domain resolve dung IP cua VPS (neu co truyen --domain)
+# =============================================================================
+if [ -n "${DOMAIN_ARG}" ]; then
+    DROPLET_IP=$(hostname -I | awk '{print $1}')
+    DNS_MAX_WAIT=300
+    DNS_WAITED=0
+    log "Doi DNS ${DOMAIN_ARG} resolve ve ${DROPLET_IP}..."
+
+    while [ $DNS_WAITED -lt $DNS_MAX_WAIT ]; do
+        # Thu dig truoc, fallback sang host, cuoi cung getent
+        RESOLVED=""
+        if command -v dig &>/dev/null; then
+            RESOLVED=$(dig +short A "${DOMAIN_ARG}" 2>/dev/null | head -1)
+        elif command -v host &>/dev/null; then
+            RESOLVED=$(host "${DOMAIN_ARG}" 2>/dev/null | grep "has address" | head -1 | awk '{print $NF}')
+        elif command -v getent &>/dev/null; then
+            RESOLVED=$(getent ahosts "${DOMAIN_ARG}" 2>/dev/null | awk '{print $1; exit}')
+        fi
+
+        if [ "${RESOLVED}" = "${DROPLET_IP}" ]; then
+            log "DNS OK: ${DOMAIN_ARG} -> ${DROPLET_IP}"
+            break
+        fi
+
+        log "DNS chua san sang: ${DOMAIN_ARG} -> ${RESOLVED:-<empty>} (doi ${DROPLET_IP}). Doi 10 giay... (${DNS_WAITED}s/${DNS_MAX_WAIT}s)"
+        sleep 10
+        DNS_WAITED=$((DNS_WAITED + 10))
+    done
+
+    if [ $DNS_WAITED -ge $DNS_MAX_WAIT ]; then
+        log "Canh bao: DNS ${DOMAIN_ARG} chua resolve sau ${DNS_MAX_WAIT}s. Tiep tuc cai dat voi IP, se cau hinh domain sau."
+        DOMAIN_ARG=""
+    fi
+fi
+
+# =============================================================================
 # 2. Cap nhat he thong + cai dat packages
 # =============================================================================
 log "Cap nhat he thong..."
