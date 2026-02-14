@@ -51,7 +51,7 @@ sleep 3
 # Giai phong lock files + xoa dpkg updates corrupt
 rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null || true
 rm -f /var/lib/dpkg/updates/* 2>/dev/null || true
-dpkg --configure -a 2>/dev/null || true
+dpkg --force-confdef --force-confold --configure -a 2>/dev/null || true
 
 is_apt_locked() {
     # Dung lsof neu co, fallback sang thu apt-get
@@ -81,7 +81,7 @@ wait_for_apt() {
     log "Canh bao: apt lock van con sau ${max_wait}s, thu giai phong..."
     killall -9 apt apt-get dpkg unattended-upgr 2>/dev/null || true
     rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null || true
-    dpkg --configure -a 2>/dev/null || true
+    dpkg --force-confdef --force-confold --configure -a 2>/dev/null || true
     sleep 2
 }
 
@@ -137,14 +137,14 @@ apt_retry() {
         killall -9 apt apt-get dpkg 2>/dev/null || true
         rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null || true
         rm -f /var/lib/dpkg/updates/* 2>/dev/null || true
-        dpkg --configure -a 2>/dev/null || true
+        dpkg --force-confdef --force-confold --configure -a 2>/dev/null || true
         sleep 5
     done
     log "LOI: apt command that bai sau ${retries} lan thu."
     return 1
 }
 
-apt_retry dpkg --configure -a
+apt_retry dpkg --force-confdef --force-confold --configure -a
 apt_retry apt-get -qqy update
 apt_retry apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' full-upgrade
 apt_retry apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' install \
