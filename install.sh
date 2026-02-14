@@ -293,9 +293,11 @@ CONFIGEOF
 
 # Copy default config (Anthropic) va inject gateway token
 cp /etc/openclaw/config/anthropic.json ${INSTALL_DIR}/config/openclaw.json
-# Thay the placeholder token bang token thuc
-jq --arg token "${GATEWAY_TOKEN}" '.gateway.auth.token = $token' \
-    ${INSTALL_DIR}/config/openclaw.json > ${INSTALL_DIR}/config/openclaw.json.tmp
+# Thay the placeholder token bang token thuc, them plugins mac dinh (zalo)
+jq --arg token "${GATEWAY_TOKEN}" '
+  .gateway.auth.token = $token |
+  .plugins = { "entries": { "zalo": { "enabled": true } } }
+' ${INSTALL_DIR}/config/openclaw.json > ${INSTALL_DIR}/config/openclaw.json.tmp
 mv ${INSTALL_DIR}/config/openclaw.json.tmp ${INSTALL_DIR}/config/openclaw.json
 
 # Tao thu muc auth-profiles (de Management API co the ghi API keys)

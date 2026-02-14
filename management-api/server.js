@@ -231,10 +231,10 @@ const PROVIDERS = {
 };
 
 const CHANNEL_MAP = {
-  telegram: 'TELEGRAM_BOT_TOKEN',
-  discord: 'DISCORD_BOT_TOKEN',
-  slack: 'SLACK_BOT_TOKEN',
-  zalo: 'ZALO_BOT_TOKEN'
+  telegram: { envKey: 'TELEGRAM_BOT_TOKEN', configKey: 'telegram', tokenField: 'botToken' },
+  discord:  { envKey: 'DISCORD_BOT_TOKEN',  configKey: 'discord',  tokenField: 'botToken' },
+  slack:    { envKey: 'SLACK_BOT_TOKEN',     configKey: 'slack',    tokenField: 'botToken' },
+  zalo:     { envKey: 'ZALO_BOT_TOKEN',      configKey: 'zalo',     tokenField: 'botToken' }
 };
 
 // --- Docker compose helpers ---
@@ -600,6 +600,10 @@ const server = http.createServer(async (req, res) => {
         apiKeys,
         config: {
           agents: config.agents,
+          channels: config.channels ? Object.fromEntries(
+            Object.entries(config.channels).map(([k, v]) => [k, { ...v, botToken: v.botToken ? '***' : undefined }])
+          ) : undefined,
+          plugins: config.plugins,
           gateway: { ...config.gateway, auth: { token: '***' } },
           browser: config.browser
         }
@@ -628,19 +632,21 @@ const server = http.createServer(async (req, res) => {
       const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
       const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
 
-      // Preserve existing settings from current config
-      let existingConfig = {};
-      try { existingConfig = readConfig(); } catch {}
+      // Read existing config and only update model + gateway essentials
+      // Preserve all other sections (channels, plugins, meta, messages, etc.)
+      let config;
+      try { config = readConfig(); } catch { config = {}; }
 
-      const config = { ...template };
+      // Update model from template or body
+      if (!config.agents) config.agents = template.agents;
+      config.agents.defaults.model.primary = model || template.agents.defaults.model.primary;
 
-      // Preserve gateway settings (trustedProxies, controlUi, bind, etc.)
-      config.gateway = { ...template.gateway, ...(existingConfig.gateway || {}) };
-      config.gateway.auth = { ...template.gateway.auth, token };
+      // Merge gateway: keep existing settings, ensure auth token is correct
+      config.gateway = { ...template.gateway, ...(config.gateway || {}) };
+      config.gateway.auth = { token };
 
-      if (model) {
-        config.agents.defaults.model.primary = model;
-      }
+      // Preserve browser from template if not set
+      if (!config.browser) config.browser = template.browser;
 
       // Write auth-profiles.json if there's an API key in env for this provider
       const authProvider = providerConfig.authProfileProvider;
@@ -698,12 +704,18 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'GET', '/api/channels')) {
     try {
+      let configChannels = {};
+      try { configChannels = readConfig().channels || {}; } catch {}
+
       const channels = {};
-      for (const [name, envKey] of Object.entries(CHANNEL_MAP)) {
-        const val = getEnvValue(envKey);
+      for (const [name, ch] of Object.entries(CHANNEL_MAP)) {
+        const configCh = configChannels[ch.configKey] || {};
+        const envVal = getEnvValue(ch.envKey);
+        const tokenVal = configCh[ch.tokenField] || envVal;
         channels[name] = {
-          configured: !!val,
-          token: val ? sanitizeKey(val) : null
+          configured: !!(tokenVal && configCh.enabled),
+          enabled: !!configCh.enabled,
+          token: tokenVal ? sanitizeKey(tokenVal) : null
         };
       }
       return json(res, 200, { ok: true, channels });
@@ -718,16 +730,36 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const channel = m.params.channel;
 
-      if (!CHANNEL_MAP[channel]) {
+      const chConfig = CHANNEL_MAP[channel];
+      if (!chConfig) {
         return json(res, 400, { ok: false, error: 'Invalid channel. Use: telegram, discord, slack, zalo' });
       }
       if (!body.token) return json(res, 400, { ok: false, error: 'Missing token' });
 
-      setEnvValue(CHANNEL_MAP[channel], body.token);
+      // 1. Set env var (as fallback)
+      setEnvValue(chConfig.envKey, body.token);
       if (channel === 'slack' && body.appToken) {
         setEnvValue('SLACK_APP_TOKEN', body.appToken);
       }
 
+      // 2. Write channel config in openclaw.json
+      const config = readConfig();
+      if (!config.channels) config.channels = {};
+      config.channels[chConfig.configKey] = {
+        enabled: true,
+        [chConfig.tokenField]: body.token,
+        dmPolicy: body.dmPolicy || 'open',
+        allowFrom: ['*']
+      };
+
+      // 3. Enable plugin if needed (telegram is built-in, others need plugin)
+      if (['zalo', 'discord', 'slack'].includes(channel)) {
+        if (!config.plugins) config.plugins = { entries: {} };
+        if (!config.plugins.entries) config.plugins.entries = {};
+        config.plugins.entries[channel] = { enabled: true };
+      }
+
+      writeConfig(config);
       restartContainer('openclaw');
       return json(res, 200, { ok: true, channel, token: sanitizeKey(body.token) });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -739,10 +771,24 @@ const server = http.createServer(async (req, res) => {
   if ((m = route(req, 'DELETE', '/api/channels/:channel'))) {
     try {
       const channel = m.params.channel;
-      if (!CHANNEL_MAP[channel]) return json(res, 400, { ok: false, error: 'Invalid channel' });
+      const chConfig = CHANNEL_MAP[channel];
+      if (!chConfig) return json(res, 400, { ok: false, error: 'Invalid channel' });
 
-      removeEnvValue(CHANNEL_MAP[channel]);
+      // 1. Remove env var
+      removeEnvValue(chConfig.envKey);
       if (channel === 'slack') removeEnvValue('SLACK_APP_TOKEN');
+
+      // 2. Remove channel config from openclaw.json
+      try {
+        const config = readConfig();
+        if (config.channels && config.channels[chConfig.configKey]) {
+          delete config.channels[chConfig.configKey];
+        }
+        if (config.plugins?.entries?.[channel]) {
+          delete config.plugins.entries[channel];
+        }
+        writeConfig(config);
+      } catch {}
 
       restartContainer('openclaw');
       return json(res, 200, { ok: true, channel, removed: true });
