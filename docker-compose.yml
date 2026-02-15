@@ -32,14 +32,6 @@ services:
     depends_on:
       - openclaw
 
-  chatgpt-proxy:
-    image: pawanosman/chatgpt:latest
-    container_name: chatgpt-proxy
-    restart: unless-stopped
-    expose:
-      - "3040"
-    environment:
-      - OPENAI_API_KEY=${CHATGPT_ACCESS_TOKEN:-placeholder}
 
 volumes:
   caddy_data:

@@ -227,21 +227,6 @@ const PROVIDERS = {
         return r === '200';
       } catch { return false; }
     }
-  },
-  chatgpt: {
-    name: 'ChatGPT (Reverse Proxy)',
-    envKey: 'CHATGPT_ACCESS_TOKEN',
-    authProfileProvider: 'chatgpt',
-    configTemplate: `${TEMPLATES_DIR}/chatgpt.json`,
-    testFn: (accessToken) => {
-      try {
-        const r = shell(`curl -s -o /dev/null -w '%{http_code}' -X POST http://chatgpt-proxy:3040/v1/chat/completions \
-          -H 'Authorization: Bearer ${accessToken.replace(/'/g, "'\\''")}' \
-          -H 'content-type: application/json' \
-          -d '{"model":"gpt-3.5-turbo","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}'`, 15000);
-        return r === '200';
-      } catch { return false; }
-    }
   }
 };
 
@@ -636,7 +621,7 @@ const server = http.createServer(async (req, res) => {
 
       const providerConfig = PROVIDERS[provider];
       if (!providerConfig) {
-        return json(res, 400, { ok: false, error: 'Invalid provider. Use: anthropic, openai, gemini, chatgpt' });
+        return json(res, 400, { ok: false, error: 'Invalid provider. Use: anthropic, openai, gemini' });
       }
 
       const templatePath = providerConfig.configTemplate;
@@ -953,7 +938,6 @@ const server = http.createServer(async (req, res) => {
         { url: `${REPO_RAW}/config/anthropic.json`, dest: `${TEMPLATES_DIR}/anthropic.json` },
         { url: `${REPO_RAW}/config/openai.json`, dest: `${TEMPLATES_DIR}/openai.json` },
         { url: `${REPO_RAW}/config/gemini.json`, dest: `${TEMPLATES_DIR}/gemini.json` },
-        { url: `${REPO_RAW}/config/chatgpt.json`, dest: `${TEMPLATES_DIR}/chatgpt.json` },
       ];
 
       const results = [];

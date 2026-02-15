@@ -34,7 +34,6 @@ curl -X POST \
     { "file": "/etc/openclaw/config/anthropic.json", "ok": true },
     { "file": "/etc/openclaw/config/openai.json", "ok": true },
     { "file": "/etc/openclaw/config/gemini.json", "ok": true },
-    { "file": "/etc/openclaw/config/chatgpt.json", "ok": true }
   ]
 }
 ```
@@ -48,7 +47,6 @@ curl -X POST \
 | anthropic.json | `/etc/openclaw/config/anthropic.json` | Template config Anthropic |
 | openai.json | `/etc/openclaw/config/openai.json` | Template config OpenAI |
 | gemini.json | `/etc/openclaw/config/gemini.json` | Template config Gemini |
-| chatgpt.json | `/etc/openclaw/config/chatgpt.json` | Template config ChatGPT |
 
 > **Lưu ý:** Management API tự restart sau khi cập nhật. Kết nối có thể mất 2-3 giây trong lúc restart.
 

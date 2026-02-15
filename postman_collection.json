@@ -410,7 +410,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "config", "provider"]
             },
-            "description": "Change AI provider and model. Loads provider template config, injects gateway token, applies model override, restarts container.\n\nProviders: anthropic, openai, gemini, chatgpt (ChatGPT via reverse proxy — requires access token from chat.openai.com/api/auth/session)\n\nModel parameter is optional — if omitted, uses provider's default model."
+            "description": "Change AI provider and model. Loads provider template config, injects gateway token, applies model override, restarts container.\n\nProviders: anthropic, openai, gemini\n\nModel parameter is optional — if omitted, uses provider's default model."
           },
           "response": [
             {
@@ -440,7 +440,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "config", "api-key"]
             },
-            "description": "Update API key for a provider. Sets the key in .env and restarts the container.\n\nProviders: anthropic (ANTHROPIC_API_KEY), openai (OPENAI_API_KEY), gemini (GEMINI_API_KEY), chatgpt (CHATGPT_ACCESS_TOKEN)"
+            "description": "Update API key for a provider. Sets the key in .env and restarts the container.\n\nProviders: anthropic (ANTHROPIC_API_KEY), openai (OPENAI_API_KEY), gemini (GEMINI_API_KEY)"
           },
           "response": [
             {
@@ -470,7 +470,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "config", "test-key"]
             },
-            "description": "Test an API key before applying. Makes a real API call to the provider to verify the key is valid.\n\nProviders: anthropic, openai, gemini, chatgpt"
+            "description": "Test an API key before applying. Makes a real API call to the provider to verify the key is valid.\n\nProviders: anthropic, openai, gemini"
           },
           "response": [
             {
@@ -697,14 +697,14 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "self-update"]
             },
-            "description": "Download latest Management API (server.js), docker-compose.yml, and config templates from GitHub. Restarts the Management API service after update.\n\nUpdated files:\n- /opt/openclaw-mgmt/server.js\n- /opt/openclaw/docker-compose.yml\n- /etc/openclaw/config/*.json (anthropic, openai, gemini, chatgpt)"
+            "description": "Download latest Management API (server.js), docker-compose.yml, and config templates from GitHub. Restarts the Management API service after update.\n\nUpdated files:\n- /opt/openclaw-mgmt/server.js\n- /opt/openclaw/docker-compose.yml\n- /etc/openclaw/config/*.json (anthropic, openai, gemini)"
           },
           "response": [
             {
               "name": "Success",
               "status": "OK",
               "code": 200,
-              "body": "{\n  \"ok\": true,\n  \"message\": \"Update complete. Management API restarting...\",\n  \"files\": [\n    { \"file\": \"/opt/openclaw-mgmt/server.js\", \"ok\": true },\n    { \"file\": \"/opt/openclaw/docker-compose.yml\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/anthropic.json\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/openai.json\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/gemini.json\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/chatgpt.json\", \"ok\": true }\n  ]\n}"
+              "body": "{\n  \"ok\": true,\n  \"message\": \"Update complete. Management API restarting...\",\n  \"files\": [\n    { \"file\": \"/opt/openclaw-mgmt/server.js\", \"ok\": true },\n    { \"file\": \"/opt/openclaw/docker-compose.yml\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/anthropic.json\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/openai.json\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/gemini.json\", \"ok\": true }\n  ]\n}"
             }
           ]
         }
