@@ -10,24 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "groq": {
-        "baseUrl": "https://api.groq.com/openai/v1",
-        "models": [
-          {
-            "name": "llama-3.3-70b-versatile"
-          },
-          {
-            "name": "llama-3.1-8b-instant"
-          },
-          {
-            "name": "mixtral-8x7b-32768"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

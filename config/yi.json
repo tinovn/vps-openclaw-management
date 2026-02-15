@@ -10,24 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "yi": {
-        "baseUrl": "https://api.01.ai/v1",
-        "models": [
-          {
-            "name": "yi-lightning"
-          },
-          {
-            "name": "yi-large"
-          },
-          {
-            "name": "yi-medium"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

@@ -10,24 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "cohere": {
-        "baseUrl": "https://api.cohere.ai/compatibility/v1",
-        "models": [
-          {
-            "name": "command-r-plus"
-          },
-          {
-            "name": "command-r"
-          },
-          {
-            "name": "command-light"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

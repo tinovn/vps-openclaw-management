@@ -10,24 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "together": {
-        "baseUrl": "https://api.together.xyz/v1",
-        "models": [
-          {
-            "name": "meta-llama/Llama-3.3-70B-Instruct-Turbo"
-          },
-          {
-            "name": "deepseek-ai/DeepSeek-V3"
-          },
-          {
-            "name": "Qwen/Qwen2.5-72B-Instruct-Turbo"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

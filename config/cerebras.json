@@ -10,21 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "cerebras": {
-        "baseUrl": "https://api.cerebras.ai/v1",
-        "models": [
-          {
-            "name": "llama-3.3-70b"
-          },
-          {
-            "name": "llama-3.1-8b"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

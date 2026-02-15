@@ -10,24 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "moonshot": {
-        "baseUrl": "https://api.moonshot.ai/v1",
-        "models": [
-          {
-            "name": "kimi-k2.5"
-          },
-          {
-            "name": "moonshot-v1-128k"
-          },
-          {
-            "name": "moonshot-v1-32k"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

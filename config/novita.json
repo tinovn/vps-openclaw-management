@@ -10,21 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "novita": {
-        "baseUrl": "https://api.novita.ai/v3/openai",
-        "models": [
-          {
-            "name": "deepseek/deepseek-r1"
-          },
-          {
-            "name": "deepseek/deepseek-v3"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

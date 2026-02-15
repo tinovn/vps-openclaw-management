@@ -10,24 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "stepfun": {
-        "baseUrl": "https://api.stepfun.com/v1",
-        "models": [
-          {
-            "name": "step-2-16k"
-          },
-          {
-            "name": "step-1-flash"
-          },
-          {
-            "name": "step-1v-8k"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

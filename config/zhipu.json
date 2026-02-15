@@ -10,24 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "zhipu": {
-        "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
-        "models": [
-          {
-            "name": "glm-4.5-flash"
-          },
-          {
-            "name": "glm-4-plus"
-          },
-          {
-            "name": "glm-4.5-air"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

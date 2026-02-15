@@ -10,21 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "sambanova": {
-        "baseUrl": "https://api.sambanova.ai/v1",
-        "models": [
-          {
-            "name": "Meta-Llama-3.3-70B-Instruct"
-          },
-          {
-            "name": "Meta-Llama-3.1-8B-Instruct"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

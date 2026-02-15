@@ -10,24 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "baichuan": {
-        "baseUrl": "https://api.baichuan-ai.com/v1",
-        "models": [
-          {
-            "name": "Baichuan4"
-          },
-          {
-            "name": "Baichuan3-Turbo"
-          },
-          {
-            "name": "Baichuan2-Turbo"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

@@ -10,21 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "deepseek": {
-        "baseUrl": "https://api.deepseek.com/v1",
-        "models": [
-          {
-            "name": "deepseek-chat"
-          },
-          {
-            "name": "deepseek-reasoner"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

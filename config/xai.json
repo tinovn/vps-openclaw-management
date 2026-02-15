@@ -10,24 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "xai": {
-        "baseUrl": "https://api.x.ai/v1",
-        "models": [
-          {
-            "name": "grok-3-latest"
-          },
-          {
-            "name": "grok-3-mini-latest"
-          },
-          {
-            "name": "grok-2-latest"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

@@ -10,24 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "siliconflow": {
-        "baseUrl": "https://api.siliconflow.cn/v1",
-        "models": [
-          {
-            "name": "deepseek-ai/DeepSeek-V3"
-          },
-          {
-            "name": "deepseek-ai/DeepSeek-R1"
-          },
-          {
-            "name": "Qwen/Qwen2.5-72B-Instruct"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

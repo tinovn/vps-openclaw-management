@@ -10,27 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "mistral": {
-        "baseUrl": "https://api.mistral.ai/v1",
-        "models": [
-          {
-            "name": "mistral-large-latest"
-          },
-          {
-            "name": "mistral-medium-latest"
-          },
-          {
-            "name": "mistral-small-latest"
-          },
-          {
-            "name": "codestral-latest"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",

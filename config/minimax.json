@@ -10,24 +10,6 @@
       }
     }
   },
-  "models": {
-    "providers": {
-      "minimax": {
-        "baseUrl": "https://api.minimax.io/v1",
-        "models": [
-          {
-            "name": "MiniMax-M2.5"
-          },
-          {
-            "name": "MiniMax-M2.5-highspeed"
-          },
-          {
-            "name": "MiniMax-Text-01"
-          }
-        ]
-      }
-    }
-  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
