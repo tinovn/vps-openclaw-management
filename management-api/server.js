@@ -1099,10 +1099,11 @@ const server = http.createServer(async (req, res) => {
         ...configTemplates.map(t => ({ url: `${REPO_RAW}/config/${t}.json`, dest: `${TEMPLATES_DIR}/${t}.json` }))
       ];
 
+      const cacheBust = Date.now();
       const results = [];
       for (const f of files) {
         try {
-          shell(`curl -fsSL '${f.url}' -o '${f.dest}'`, 30000);
+          shell(`curl -fsSL -H 'Cache-Control: no-cache' '${f.url}?t=${cacheBust}' -o '${f.dest}'`, 30000);
           results.push({ file: f.dest, ok: true });
         } catch (e) {
           results.push({ file: f.dest, ok: false, error: e.message });
