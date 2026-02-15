@@ -224,6 +224,7 @@ OPENCLAW_MGMT_API_KEY=${MGMT_API_KEY}
 # ANTHROPIC_API_KEY=your_key_here
 # OPENAI_API_KEY=your_key_here
 # GEMINI_API_KEY=your_key_here
+# CHATGPT_ACCESS_TOKEN=your_chatgpt_access_token_here
 
 # Messaging Channels (uncomment va dien)
 # TELEGRAM_BOT_TOKEN=your_token_here
@@ -348,6 +349,48 @@ cat > /etc/openclaw/config/gemini.json << 'CONFIGEOF'
       "maxConcurrent": 4,
       "subagents": {
         "maxConcurrent": 8
+      }
+    }
+  },
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "auth": {
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+    },
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "controlUi": {
+      "enabled": true,
+      "allowInsecureAuth": true
+    }
+  },
+  "browser": {
+    "headless": true,
+    "defaultProfile": "openclaw",
+    "noSandbox": true
+  }
+}
+CONFIGEOF
+
+# --- chatgpt.json ---
+cat > /etc/openclaw/config/chatgpt.json << 'CONFIGEOF'
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openai/gpt-4"
+      },
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    }
+  },
+  "models": {
+    "providers": {
+      "openai": {
+        "baseUrl": "http://chatgpt-proxy:3040/v1",
+        "models": ["gpt-4", "gpt-4o", "gpt-3.5-turbo"]
       }
     }
   },

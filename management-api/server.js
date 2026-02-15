@@ -227,6 +227,21 @@ const PROVIDERS = {
         return r === '200';
       } catch { return false; }
     }
+  },
+  chatgpt: {
+    name: 'ChatGPT (Reverse Proxy)',
+    envKey: 'CHATGPT_ACCESS_TOKEN',
+    authProfileProvider: 'openai',
+    configTemplate: `${TEMPLATES_DIR}/chatgpt.json`,
+    testFn: (accessToken) => {
+      try {
+        const r = shell(`curl -s -o /dev/null -w '%{http_code}' -X POST http://chatgpt-proxy:3040/v1/chat/completions \
+          -H 'Authorization: Bearer ${accessToken.replace(/'/g, "'\\''")}' \
+          -H 'content-type: application/json' \
+          -d '{"model":"gpt-3.5-turbo","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}'`, 15000);
+        return r === '200';
+      } catch { return false; }
+    }
   }
 };
 
@@ -621,7 +636,7 @@ const server = http.createServer(async (req, res) => {
 
       const providerConfig = PROVIDERS[provider];
       if (!providerConfig) {
-        return json(res, 400, { ok: false, error: 'Invalid provider. Use: anthropic, openai, gemini' });
+        return json(res, 400, { ok: false, error: 'Invalid provider. Use: anthropic, openai, gemini, chatgpt' });
       }
 
       const templatePath = providerConfig.configTemplate;

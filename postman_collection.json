@@ -410,7 +410,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "config", "provider"]
             },
-            "description": "Change AI provider and model. Loads provider template config, injects gateway token, applies model override, restarts container.\n\nProviders: anthropic, openai, gemini\n\nModel parameter is optional — if omitted, uses provider's default model."
+            "description": "Change AI provider and model. Loads provider template config, injects gateway token, applies model override, restarts container.\n\nProviders: anthropic, openai, gemini, chatgpt (ChatGPT via reverse proxy — requires access token from chat.openai.com/api/auth/session)\n\nModel parameter is optional — if omitted, uses provider's default model."
           },
           "response": [
             {
@@ -440,7 +440,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "config", "api-key"]
             },
-            "description": "Update API key for a provider. Sets the key in .env and restarts the container.\n\nProviders: anthropic (ANTHROPIC_API_KEY), openai (OPENAI_API_KEY), gemini (GOOGLE_API_KEY)"
+            "description": "Update API key for a provider. Sets the key in .env and restarts the container.\n\nProviders: anthropic (ANTHROPIC_API_KEY), openai (OPENAI_API_KEY), gemini (GEMINI_API_KEY), chatgpt (CHATGPT_ACCESS_TOKEN)"
           },
           "response": [
             {
@@ -470,7 +470,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "config", "test-key"]
             },
-            "description": "Test an API key before applying. Makes a real API call to the provider to verify the key is valid.\n\nProviders: anthropic, openai, gemini"
+            "description": "Test an API key before applying. Makes a real API call to the provider to verify the key is valid.\n\nProviders: anthropic, openai, gemini, chatgpt"
           },
           "response": [
             {
