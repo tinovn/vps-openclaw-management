@@ -1111,6 +1111,15 @@ const server = http.createServer(async (req, res) => {
 
       const allOk = results.every(r => r.ok);
 
+      // Clean invalid models.providers from openclaw.json (fix for old templates)
+      try {
+        const config = readConfig();
+        if (config.models) {
+          delete config.models;
+          writeConfig(config);
+        }
+      } catch {}
+
       // Apply docker-compose changes (start new services if any)
       let composeResult = null;
       try {
