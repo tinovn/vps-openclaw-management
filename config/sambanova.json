@@ -16,10 +16,10 @@
         "baseUrl": "https://api.sambanova.ai/v1",
         "models": [
           {
-            "id": "Meta-Llama-3.3-70B-Instruct"
+            "name": "Meta-Llama-3.3-70B-Instruct"
           },
           {
-            "id": "Meta-Llama-3.1-8B-Instruct"
+            "name": "Meta-Llama-3.1-8B-Instruct"
           }
         ]
       }

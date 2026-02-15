@@ -16,13 +16,13 @@
         "baseUrl": "https://api.together.xyz/v1",
         "models": [
           {
-            "id": "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+            "name": "meta-llama/Llama-3.3-70B-Instruct-Turbo"
           },
           {
-            "id": "deepseek-ai/DeepSeek-V3"
+            "name": "deepseek-ai/DeepSeek-V3"
           },
           {
-            "id": "Qwen/Qwen2.5-72B-Instruct-Turbo"
+            "name": "Qwen/Qwen2.5-72B-Instruct-Turbo"
           }
         ]
       }

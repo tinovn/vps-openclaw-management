@@ -16,13 +16,13 @@
         "baseUrl": "https://api.cohere.ai/compatibility/v1",
         "models": [
           {
-            "id": "command-r-plus"
+            "name": "command-r-plus"
           },
           {
-            "id": "command-r"
+            "name": "command-r"
           },
           {
-            "id": "command-light"
+            "name": "command-light"
           }
         ]
       }

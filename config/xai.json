@@ -16,13 +16,13 @@
         "baseUrl": "https://api.x.ai/v1",
         "models": [
           {
-            "id": "grok-3-latest"
+            "name": "grok-3-latest"
           },
           {
-            "id": "grok-3-mini-latest"
+            "name": "grok-3-mini-latest"
           },
           {
-            "id": "grok-2-latest"
+            "name": "grok-2-latest"
           }
         ]
       }

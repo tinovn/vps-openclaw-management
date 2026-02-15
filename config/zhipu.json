@@ -16,13 +16,13 @@
         "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
         "models": [
           {
-            "id": "glm-4.5-flash"
+            "name": "glm-4.5-flash"
           },
           {
-            "id": "glm-4-plus"
+            "name": "glm-4-plus"
           },
           {
-            "id": "glm-4.5-air"
+            "name": "glm-4.5-air"
           }
         ]
       }

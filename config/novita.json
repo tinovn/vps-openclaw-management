@@ -16,10 +16,10 @@
         "baseUrl": "https://api.novita.ai/v3/openai",
         "models": [
           {
-            "id": "deepseek/deepseek-r1"
+            "name": "deepseek/deepseek-r1"
           },
           {
-            "id": "deepseek/deepseek-v3"
+            "name": "deepseek/deepseek-v3"
           }
         ]
       }

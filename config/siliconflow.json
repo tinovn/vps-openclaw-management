@@ -16,13 +16,13 @@
         "baseUrl": "https://api.siliconflow.cn/v1",
         "models": [
           {
-            "id": "deepseek-ai/DeepSeek-V3"
+            "name": "deepseek-ai/DeepSeek-V3"
           },
           {
-            "id": "deepseek-ai/DeepSeek-R1"
+            "name": "deepseek-ai/DeepSeek-R1"
           },
           {
-            "id": "Qwen/Qwen2.5-72B-Instruct"
+            "name": "Qwen/Qwen2.5-72B-Instruct"
           }
         ]
       }

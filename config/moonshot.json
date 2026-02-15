@@ -14,7 +14,17 @@
     "providers": {
       "moonshot": {
         "baseUrl": "https://api.moonshot.ai/v1",
-        "models": [{"id": "kimi-k2.5"}, {"id": "moonshot-v1-128k"}, {"id": "moonshot-v1-32k"}]
+        "models": [
+          {
+            "name": "kimi-k2.5"
+          },
+          {
+            "name": "moonshot-v1-128k"
+          },
+          {
+            "name": "moonshot-v1-32k"
+          }
+        ]
       }
     }
   },
@@ -24,7 +34,11 @@
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": [
+      "172.16.0.0/12",
+      "10.0.0.0/8",
+      "192.168.0.0/16"
+    ],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

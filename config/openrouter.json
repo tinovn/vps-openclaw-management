@@ -16,16 +16,16 @@
         "baseUrl": "https://openrouter.ai/api/v1",
         "models": [
           {
-            "id": "deepseek/deepseek-chat"
+            "name": "deepseek/deepseek-chat"
           },
           {
-            "id": "anthropic/claude-sonnet-4"
+            "name": "anthropic/claude-sonnet-4"
           },
           {
-            "id": "openai/gpt-4o"
+            "name": "openai/gpt-4o"
           },
           {
-            "id": "google/gemini-2.5-pro"
+            "name": "google/gemini-2.5-pro"
           }
         ]
       }

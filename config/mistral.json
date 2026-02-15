@@ -16,16 +16,16 @@
         "baseUrl": "https://api.mistral.ai/v1",
         "models": [
           {
-            "id": "mistral-large-latest"
+            "name": "mistral-large-latest"
           },
           {
-            "id": "mistral-medium-latest"
+            "name": "mistral-medium-latest"
           },
           {
-            "id": "mistral-small-latest"
+            "name": "mistral-small-latest"
           },
           {
-            "id": "codestral-latest"
+            "name": "codestral-latest"
           }
         ]
       }

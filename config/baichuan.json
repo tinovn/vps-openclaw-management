@@ -16,13 +16,13 @@
         "baseUrl": "https://api.baichuan-ai.com/v1",
         "models": [
           {
-            "id": "Baichuan4"
+            "name": "Baichuan4"
           },
           {
-            "id": "Baichuan3-Turbo"
+            "name": "Baichuan3-Turbo"
           },
           {
-            "id": "Baichuan2-Turbo"
+            "name": "Baichuan2-Turbo"
           }
         ]
       }

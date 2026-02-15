@@ -16,10 +16,10 @@
         "baseUrl": "https://api.fireworks.ai/inference/v1",
         "models": [
           {
-            "id": "accounts/fireworks/models/llama-v3p3-70b-instruct"
+            "name": "accounts/fireworks/models/llama-v3p3-70b-instruct"
           },
           {
-            "id": "accounts/fireworks/models/qwen2p5-72b-instruct"
+            "name": "accounts/fireworks/models/qwen2p5-72b-instruct"
           }
         ]
       }

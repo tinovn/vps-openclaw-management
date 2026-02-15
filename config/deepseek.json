@@ -16,10 +16,10 @@
         "baseUrl": "https://api.deepseek.com/v1",
         "models": [
           {
-            "id": "deepseek-chat"
+            "name": "deepseek-chat"
           },
           {
-            "id": "deepseek-reasoner"
+            "name": "deepseek-reasoner"
           }
         ]
       }

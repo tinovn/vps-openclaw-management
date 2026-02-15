@@ -16,13 +16,13 @@
         "baseUrl": "https://api.01.ai/v1",
         "models": [
           {
-            "id": "yi-lightning"
+            "name": "yi-lightning"
           },
           {
-            "id": "yi-large"
+            "name": "yi-large"
           },
           {
-            "id": "yi-medium"
+            "name": "yi-medium"
           }
         ]
       }
