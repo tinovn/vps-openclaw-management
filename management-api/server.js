@@ -231,7 +231,7 @@ const PROVIDERS = {
   chatgpt: {
     name: 'ChatGPT (Reverse Proxy)',
     envKey: 'CHATGPT_ACCESS_TOKEN',
-    authProfileProvider: 'openai',
+    authProfileProvider: 'chatgpt',
     configTemplate: `${TEMPLATES_DIR}/chatgpt.json`,
     testFn: (accessToken) => {
       try {
