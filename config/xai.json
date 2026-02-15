@@ -10,17 +10,27 @@
       }
     }
   },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "xai": {
+        "baseUrl": "https://api.x.ai/v1",
+        "apiKey": "${XAI_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          { "id": "grok-3-latest", "name": "Grok 3" },
+          { "id": "grok-3-mini-latest", "name": "Grok 3 Mini" }
+        ]
+      }
+    }
+  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": [
-      "172.16.0.0/12",
-      "10.0.0.0/8",
-      "192.168.0.0/16"
-    ],
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

@@ -10,17 +10,27 @@
       }
     }
   },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "stepfun": {
+        "baseUrl": "https://api.stepfun.com/v1",
+        "apiKey": "${STEPFUN_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          { "id": "step-2-16k", "name": "Step 2 16K" },
+          { "id": "step-1-8k", "name": "Step 1 8K" }
+        ]
+      }
+    }
+  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": [
-      "172.16.0.0/12",
-      "10.0.0.0/8",
-      "192.168.0.0/16"
-    ],
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

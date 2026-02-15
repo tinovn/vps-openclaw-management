@@ -10,17 +10,27 @@
       }
     }
   },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "yi": {
+        "baseUrl": "https://api.01.ai/v1",
+        "apiKey": "${YI_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          { "id": "yi-lightning", "name": "Yi Lightning" },
+          { "id": "yi-large", "name": "Yi Large" }
+        ]
+      }
+    }
+  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": [
-      "172.16.0.0/12",
-      "10.0.0.0/8",
-      "192.168.0.0/16"
-    ],
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

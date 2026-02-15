@@ -10,17 +10,28 @@
       }
     }
   },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "moonshot": {
+        "baseUrl": "https://api.moonshot.ai/v1",
+        "apiKey": "${MOONSHOT_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          { "id": "kimi-k2.5", "name": "Kimi K2.5" },
+          { "id": "moonshot-v1-128k", "name": "Moonshot V1 128K" },
+          { "id": "moonshot-v1-32k", "name": "Moonshot V1 32K" }
+        ]
+      }
+    }
+  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": [
-      "172.16.0.0/12",
-      "10.0.0.0/8",
-      "192.168.0.0/16"
-    ],
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

@@ -1111,15 +1111,6 @@ const server = http.createServer(async (req, res) => {
 
       const allOk = results.every(r => r.ok);
 
-      // Clean invalid models.providers from openclaw.json (fix for old templates)
-      try {
-        const config = readConfig();
-        if (config.models) {
-          delete config.models;
-          writeConfig(config);
-        }
-      } catch {}
-
       // Apply docker-compose changes (start new services if any)
       let composeResult = null;
       try {
@@ -1147,17 +1138,6 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   json(res, 404, { ok: false, error: 'Not found' });
 });
-
-// --- Startup: clean invalid config left by old templates ---
-try {
-  const config = readConfig();
-  if (config.models) {
-    delete config.models;
-    writeConfig(config);
-    console.log('[MGMT] Cleaned invalid models.providers from openclaw.json');
-    try { restartContainer('openclaw'); } catch {}
-  }
-} catch {}
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[Management API] Running on http://0.0.0.0:${PORT}`);

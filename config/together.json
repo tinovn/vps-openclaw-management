@@ -10,17 +10,28 @@
       }
     }
   },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "together": {
+        "baseUrl": "https://api.together.xyz/v1",
+        "apiKey": "${TOGETHER_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          { "id": "meta-llama/Llama-3.3-70B-Instruct-Turbo", "name": "Llama 3.3 70B Instruct Turbo" },
+          { "id": "deepseek-ai/DeepSeek-R1", "name": "DeepSeek R1" },
+          { "id": "Qwen/Qwen2.5-72B-Instruct-Turbo", "name": "Qwen 2.5 72B Instruct Turbo" }
+        ]
+      }
+    }
+  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": [
-      "172.16.0.0/12",
-      "10.0.0.0/8",
-      "192.168.0.0/16"
-    ],
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

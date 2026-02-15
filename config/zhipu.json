@@ -10,17 +10,28 @@
       }
     }
   },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "zhipu": {
+        "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+        "apiKey": "${ZHIPU_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          { "id": "glm-4.5-flash", "name": "GLM 4.5 Flash" },
+          { "id": "glm-4-plus", "name": "GLM 4 Plus" },
+          { "id": "glm-4-flash", "name": "GLM 4 Flash" }
+        ]
+      }
+    }
+  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": [
-      "172.16.0.0/12",
-      "10.0.0.0/8",
-      "192.168.0.0/16"
-    ],
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

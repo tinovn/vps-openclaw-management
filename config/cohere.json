@@ -10,17 +10,27 @@
       }
     }
   },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "cohere": {
+        "baseUrl": "https://api.cohere.ai/compatibility/v1",
+        "apiKey": "${COHERE_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          { "id": "command-r-plus", "name": "Command R Plus" },
+          { "id": "command-r", "name": "Command R" }
+        ]
+      }
+    }
+  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": [
-      "172.16.0.0/12",
-      "10.0.0.0/8",
-      "192.168.0.0/16"
-    ],
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

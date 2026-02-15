@@ -10,17 +10,27 @@
       }
     }
   },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "baichuan": {
+        "baseUrl": "https://api.baichuan-ai.com/v1",
+        "apiKey": "${BAICHUAN_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          { "id": "Baichuan4", "name": "Baichuan 4" },
+          { "id": "Baichuan3-Turbo", "name": "Baichuan 3 Turbo" }
+        ]
+      }
+    }
+  },
   "gateway": {
     "mode": "local",
     "bind": "lan",
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": [
-      "172.16.0.0/12",
-      "10.0.0.0/8",
-      "192.168.0.0/16"
-    ],
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true
