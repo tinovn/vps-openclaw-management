@@ -24,6 +24,18 @@ const MAX_AUTH_FAILURES = 10;
 const BLOCK_DURATION = 15 * 60 * 1000;
 const authAttempts = {};
 
+// IP Whitelist — only these IPs can access the Management API
+const ALLOWED_IPS = [
+  '103.130.216.5',
+  '103.130.216.57',
+  '103.130.216.58',
+  '103.241.42.12',
+  '103.241.42.10',
+  '103.130.217.10',
+  '127.0.0.1',       // localhost
+  '::1',             // localhost IPv6
+];
+
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -185,6 +197,15 @@ function route(req, method, path) {
 }
 
 // --- Provider configs ---
+// Helper: test API key via Bearer auth + GET /models endpoint
+function testBearerModels(url, apiKey) {
+  try {
+    const r = shell(`curl -s -o /dev/null -w '%{http_code}' '${url}' \
+      -H 'Authorization: Bearer ${apiKey.replace(/'/g, "'\\''")}' `, 15000);
+    return r === '200';
+  } catch { return false; }
+}
+
 const PROVIDERS = {
   anthropic: {
     name: 'Anthropic',
@@ -207,13 +228,7 @@ const PROVIDERS = {
     envKey: 'OPENAI_API_KEY',
     authProfileProvider: 'openai',
     configTemplate: `${TEMPLATES_DIR}/openai.json`,
-    testFn: (apiKey) => {
-      try {
-        const r = shell(`curl -s -o /dev/null -w '%{http_code}' https://api.openai.com/v1/models \
-          -H 'Authorization: Bearer ${apiKey.replace(/'/g, "'\\''")}' `, 15000);
-        return r === '200';
-      } catch { return false; }
-    }
+    testFn: (apiKey) => testBearerModels('https://api.openai.com/v1/models', apiKey)
   },
   gemini: {
     name: 'Google Gemini',
@@ -224,6 +239,140 @@ const PROVIDERS = {
       try {
         const r = shell(`curl -s -o /dev/null -w '%{http_code}' \
           "https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.replace(/'/g, "'\\''")}"`, 15000);
+        return r === '200';
+      } catch { return false; }
+    }
+  },
+  deepseek: {
+    name: 'DeepSeek',
+    envKey: 'DEEPSEEK_API_KEY',
+    authProfileProvider: 'deepseek',
+    configTemplate: `${TEMPLATES_DIR}/deepseek.json`,
+    testFn: (apiKey) => testBearerModels('https://api.deepseek.com/v1/models', apiKey)
+  },
+  groq: {
+    name: 'Groq',
+    envKey: 'GROQ_API_KEY',
+    authProfileProvider: 'groq',
+    configTemplate: `${TEMPLATES_DIR}/groq.json`,
+    testFn: (apiKey) => testBearerModels('https://api.groq.com/openai/v1/models', apiKey)
+  },
+  together: {
+    name: 'Together AI',
+    envKey: 'TOGETHER_API_KEY',
+    authProfileProvider: 'together',
+    configTemplate: `${TEMPLATES_DIR}/together.json`,
+    testFn: (apiKey) => testBearerModels('https://api.together.xyz/v1/models', apiKey)
+  },
+  mistral: {
+    name: 'Mistral AI',
+    envKey: 'MISTRAL_API_KEY',
+    authProfileProvider: 'mistral',
+    configTemplate: `${TEMPLATES_DIR}/mistral.json`,
+    testFn: (apiKey) => testBearerModels('https://api.mistral.ai/v1/models', apiKey)
+  },
+  xai: {
+    name: 'xAI (Grok)',
+    envKey: 'XAI_API_KEY',
+    authProfileProvider: 'xai',
+    configTemplate: `${TEMPLATES_DIR}/xai.json`,
+    testFn: (apiKey) => testBearerModels('https://api.x.ai/v1/models', apiKey)
+  },
+  cerebras: {
+    name: 'Cerebras',
+    envKey: 'CEREBRAS_API_KEY',
+    authProfileProvider: 'cerebras',
+    configTemplate: `${TEMPLATES_DIR}/cerebras.json`,
+    testFn: (apiKey) => testBearerModels('https://api.cerebras.ai/v1/models', apiKey)
+  },
+  sambanova: {
+    name: 'SambaNova',
+    envKey: 'SAMBANOVA_API_KEY',
+    authProfileProvider: 'sambanova',
+    configTemplate: `${TEMPLATES_DIR}/sambanova.json`,
+    testFn: (apiKey) => testBearerModels('https://api.sambanova.ai/v1/models', apiKey)
+  },
+  fireworks: {
+    name: 'Fireworks AI',
+    envKey: 'FIREWORKS_API_KEY',
+    authProfileProvider: 'fireworks',
+    configTemplate: `${TEMPLATES_DIR}/fireworks.json`,
+    testFn: (apiKey) => testBearerModels('https://api.fireworks.ai/inference/v1/models', apiKey)
+  },
+  cohere: {
+    name: 'Cohere',
+    envKey: 'COHERE_API_KEY',
+    authProfileProvider: 'cohere',
+    configTemplate: `${TEMPLATES_DIR}/cohere.json`,
+    testFn: (apiKey) => testBearerModels('https://api.cohere.ai/compatibility/v1/models', apiKey)
+  },
+  yi: {
+    name: 'Yi/01.AI',
+    envKey: 'YI_API_KEY',
+    authProfileProvider: 'yi',
+    configTemplate: `${TEMPLATES_DIR}/yi.json`,
+    testFn: (apiKey) => testBearerModels('https://api.01.ai/v1/models', apiKey)
+  },
+  baichuan: {
+    name: 'Baichuan AI',
+    envKey: 'BAICHUAN_API_KEY',
+    authProfileProvider: 'baichuan',
+    configTemplate: `${TEMPLATES_DIR}/baichuan.json`,
+    testFn: (apiKey) => testBearerModels('https://api.baichuan-ai.com/v1/models', apiKey)
+  },
+  stepfun: {
+    name: 'Stepfun',
+    envKey: 'STEPFUN_API_KEY',
+    authProfileProvider: 'stepfun',
+    configTemplate: `${TEMPLATES_DIR}/stepfun.json`,
+    testFn: (apiKey) => testBearerModels('https://api.stepfun.com/v1/models', apiKey)
+  },
+  siliconflow: {
+    name: 'SiliconFlow',
+    envKey: 'SILICONFLOW_API_KEY',
+    authProfileProvider: 'siliconflow',
+    configTemplate: `${TEMPLATES_DIR}/siliconflow.json`,
+    testFn: (apiKey) => testBearerModels('https://api.siliconflow.cn/v1/models', apiKey)
+  },
+  novita: {
+    name: 'Novita AI',
+    envKey: 'NOVITA_API_KEY',
+    authProfileProvider: 'novita',
+    configTemplate: `${TEMPLATES_DIR}/novita.json`,
+    testFn: (apiKey) => testBearerModels('https://api.novita.ai/v3/openai/models', apiKey)
+  },
+  openrouter: {
+    name: 'OpenRouter',
+    envKey: 'OPENROUTER_API_KEY',
+    authProfileProvider: 'openrouter',
+    configTemplate: `${TEMPLATES_DIR}/openrouter.json`,
+    testFn: (apiKey) => testBearerModels('https://openrouter.ai/api/v1/models', apiKey)
+  },
+  minimax: {
+    name: 'Minimax',
+    envKey: 'MINIMAX_API_KEY',
+    authProfileProvider: 'minimax',
+    configTemplate: `${TEMPLATES_DIR}/minimax.json`,
+    testFn: (apiKey) => testBearerModels('https://api.minimax.io/v1/models', apiKey)
+  },
+  moonshot: {
+    name: 'Moonshot/Kimi',
+    envKey: 'MOONSHOT_API_KEY',
+    authProfileProvider: 'moonshot',
+    configTemplate: `${TEMPLATES_DIR}/moonshot.json`,
+    testFn: (apiKey) => testBearerModels('https://api.moonshot.ai/v1/models', apiKey)
+  },
+  zhipu: {
+    name: 'Zhipu/GLM',
+    envKey: 'ZHIPU_API_KEY',
+    authProfileProvider: 'zhipu',
+    configTemplate: `${TEMPLATES_DIR}/zhipu.json`,
+    testFn: (apiKey) => {
+      try {
+        const r = shell(`curl -s -o /dev/null -w '%{http_code}' -X POST https://open.bigmodel.cn/api/paas/v4/chat/completions \
+          -H 'Authorization: Bearer ${apiKey.replace(/'/g, "'\\''")}' \
+          -H 'Content-Type: application/json' \
+          -d '{"model":"glm-4.5-flash","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}'`, 15000);
         return r === '200';
       } catch { return false; }
     }
@@ -271,6 +420,11 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+
+  // IP Whitelist check
+  if (!ALLOWED_IPS.includes(ip)) {
+    return json(res, 403, { ok: false, error: 'Access denied' });
+  }
 
   // Rate limit
   if (isBlocked(ip)) {
@@ -621,7 +775,7 @@ const server = http.createServer(async (req, res) => {
 
       const providerConfig = PROVIDERS[provider];
       if (!providerConfig) {
-        return json(res, 400, { ok: false, error: 'Invalid provider. Use: anthropic, openai, gemini' });
+        return json(res, 400, { ok: false, error: 'Invalid provider. Use: ' + Object.keys(PROVIDERS).join(', ') });
       }
 
       const templatePath = providerConfig.configTemplate;
@@ -932,12 +1086,17 @@ const server = http.createServer(async (req, res) => {
       const REPO_RAW = 'https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main';
       const MGMT_API_DIR = '/opt/openclaw-mgmt';
 
+      const configTemplates = [
+        'anthropic', 'openai', 'gemini',
+        'deepseek', 'groq', 'together', 'mistral', 'xai',
+        'cerebras', 'sambanova', 'fireworks', 'cohere',
+        'yi', 'baichuan', 'stepfun', 'siliconflow', 'novita', 'openrouter',
+        'minimax', 'moonshot', 'zhipu'
+      ];
       const files = [
         { url: `${REPO_RAW}/management-api/server.js`, dest: `${MGMT_API_DIR}/server.js` },
         { url: `${REPO_RAW}/docker-compose.yml`, dest: `${COMPOSE_DIR}/docker-compose.yml` },
-        { url: `${REPO_RAW}/config/anthropic.json`, dest: `${TEMPLATES_DIR}/anthropic.json` },
-        { url: `${REPO_RAW}/config/openai.json`, dest: `${TEMPLATES_DIR}/openai.json` },
-        { url: `${REPO_RAW}/config/gemini.json`, dest: `${TEMPLATES_DIR}/gemini.json` },
+        ...configTemplates.map(t => ({ url: `${REPO_RAW}/config/${t}.json`, dest: `${TEMPLATES_DIR}/${t}.json` }))
       ];
 
       const results = [];
@@ -955,7 +1114,7 @@ const server = http.createServer(async (req, res) => {
       // Apply docker-compose changes (start new services if any)
       let composeResult = null;
       try {
-        composeResult = dockerCompose('up -d', 120000);
+        composeResult = dockerCompose('up -d --remove-orphans', 120000);
       } catch (e) {
         composeResult = e.message;
       }

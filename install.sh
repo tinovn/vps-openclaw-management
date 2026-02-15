@@ -224,6 +224,24 @@ OPENCLAW_MGMT_API_KEY=${MGMT_API_KEY}
 # ANTHROPIC_API_KEY=your_key_here
 # OPENAI_API_KEY=your_key_here
 # GEMINI_API_KEY=your_key_here
+# DEEPSEEK_API_KEY=your_key_here
+# GROQ_API_KEY=your_key_here
+# TOGETHER_API_KEY=your_key_here
+# MISTRAL_API_KEY=your_key_here
+# XAI_API_KEY=your_key_here
+# CEREBRAS_API_KEY=your_key_here
+# SAMBANOVA_API_KEY=your_key_here
+# FIREWORKS_API_KEY=your_key_here
+# COHERE_API_KEY=your_key_here
+# YI_API_KEY=your_key_here
+# BAICHUAN_API_KEY=your_key_here
+# STEPFUN_API_KEY=your_key_here
+# SILICONFLOW_API_KEY=your_key_here
+# NOVITA_API_KEY=your_key_here
+# OPENROUTER_API_KEY=your_key_here
+# MINIMAX_API_KEY=your_key_here
+# MOONSHOT_API_KEY=your_key_here
+# ZHIPU_API_KEY=your_key_here
 
 # Messaging Channels (uncomment va dien)
 # TELEGRAM_BOT_TOKEN=your_token_here
@@ -370,6 +388,12 @@ cat > /etc/openclaw/config/gemini.json << 'CONFIGEOF'
   }
 }
 CONFIGEOF
+
+# --- Download config templates cho cac provider khac tu GitHub ---
+for provider in deepseek groq together mistral xai cerebras sambanova fireworks cohere yi baichuan stepfun siliconflow novita openrouter minimax moonshot zhipu; do
+    curl -fsSL "${REPO_RAW}/config/${provider}.json" -o /etc/openclaw/config/${provider}.json 2>/dev/null || \
+        log "Canh bao: Khong tai duoc config template ${provider}.json"
+done
 
 # Copy default config (Anthropic) va inject gateway token
 cp /etc/openclaw/config/anthropic.json ${INSTALL_DIR}/config/openclaw.json

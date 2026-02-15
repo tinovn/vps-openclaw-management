@@ -1,0 +1,38 @@
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "xai/grok-3-latest"
+      },
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    }
+  },
+  "models": {
+    "providers": {
+      "xai": {
+        "baseUrl": "https://api.x.ai/v1",
+        "models": ["grok-3-latest", "grok-3-mini-latest", "grok-2-latest"]
+      }
+    }
+  },
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "auth": {
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+    },
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "controlUi": {
+      "enabled": true,
+      "allowInsecureAuth": true
+    }
+  },
+  "browser": {
+    "headless": true,
+    "defaultProfile": "openclaw",
+    "noSandbox": true
+  }
+}

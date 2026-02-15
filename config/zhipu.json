@@ -1,0 +1,38 @@
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "zhipu/glm-4.5-flash"
+      },
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    }
+  },
+  "models": {
+    "providers": {
+      "zhipu": {
+        "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+        "models": ["glm-4.5-flash", "glm-4-plus", "glm-4.5-air"]
+      }
+    }
+  },
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "auth": {
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+    },
+    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "controlUi": {
+      "enabled": true,
+      "allowInsecureAuth": true
+    }
+  },
+  "browser": {
+    "headless": true,
+    "defaultProfile": "openclaw",
+    "noSandbox": true
+  }
+}

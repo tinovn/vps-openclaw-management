@@ -23,10 +23,12 @@ OpenClaw/
 ├── Caddyfile                   # Template Caddy config
 ├── management-api/
 │   └── server.js               # Management API server (port 9998)
-├── config/
-│   ├── anthropic.json          # Template config Anthropic
-│   ├── openai.json             # Template config OpenAI
-│   └── gemini.json             # Template config Gemini
+├── config/                       # Template configs cho 18 providers
+│   ├── anthropic.json openai.json gemini.json
+│   ├── deepseek.json groq.json together.json mistral.json xai.json
+│   ├── cerebras.json sambanova.json fireworks.json cohere.json
+│   ├── yi.json baichuan.json stepfun.json siliconflow.json
+│   └── novita.json openrouter.json minimax.json moonshot.json zhipu.json
 ├── template.json               # Packer template (legacy)
 └── CLAUDE.md
 ```
@@ -55,7 +57,24 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 ├── anthropic.json
 ├── openai.json
 ├── gemini.json
-└── chatgpt.json
+├── deepseek.json
+├── groq.json
+├── together.json
+├── mistral.json
+├── xai.json
+├── cerebras.json
+├── sambanova.json
+├── fireworks.json
+├── cohere.json
+├── yi.json
+├── baichuan.json
+├── stepfun.json
+├── siliconflow.json
+├── novita.json
+├── openrouter.json
+├── minimax.json
+├── moonshot.json
+└── zhipu.json
 ```
 
 ## Management API
