@@ -960,10 +960,18 @@ const server = http.createServer(async (req, res) => {
 
       const allOk = results.every(r => r.ok);
 
+      // Apply docker-compose changes (start new services if any)
+      let composeResult = null;
+      try {
+        composeResult = dockerCompose('up -d', 120000);
+      } catch (e) {
+        composeResult = e.message;
+      }
+
       // Restart management API service (systemd sẽ tự start lại với code mới)
       // Dùng exec async để response kịp trả về trước khi process bị kill
       if (allOk) {
-        json(res, 200, { ok: true, message: 'Update complete. Management API restarting...', files: results });
+        json(res, 200, { ok: true, message: 'Update complete. Management API restarting...', files: results, compose: composeResult });
         setTimeout(() => {
           try { execSync('systemctl restart openclaw-mgmt', { timeout: 10000 }); } catch {}
         }, 500);
