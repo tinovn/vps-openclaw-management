@@ -663,6 +663,14 @@ const server = http.createServer(async (req, res) => {
       // Preserve browser from template if not set
       if (!config.browser) config.browser = template.browser;
 
+      // Copy models section from template (e.g. custom baseUrl for chatgpt proxy)
+      // Remove it when switching to a provider that doesn't need it
+      if (template.models) {
+        config.models = template.models;
+      } else {
+        delete config.models;
+      }
+
       // Write auth-profiles.json if there's an API key in env for this provider
       const authProvider = providerConfig.authProfileProvider;
       const existingKey = getEnvValue(providerConfig.envKey);
