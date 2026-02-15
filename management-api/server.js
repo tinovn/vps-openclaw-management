@@ -932,6 +932,49 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
+  // POST /api/self-update — Tu dong cap nhat Management API + docker-compose + config templates
+  // =========================================================================
+  if (route(req, 'POST', '/api/self-update')) {
+    try {
+      const REPO_RAW = 'https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main';
+      const MGMT_API_DIR = '/opt/openclaw-mgmt';
+
+      const files = [
+        { url: `${REPO_RAW}/management-api/server.js`, dest: `${MGMT_API_DIR}/server.js` },
+        { url: `${REPO_RAW}/docker-compose.yml`, dest: `${COMPOSE_DIR}/docker-compose.yml` },
+        { url: `${REPO_RAW}/config/anthropic.json`, dest: `${TEMPLATES_DIR}/anthropic.json` },
+        { url: `${REPO_RAW}/config/openai.json`, dest: `${TEMPLATES_DIR}/openai.json` },
+        { url: `${REPO_RAW}/config/gemini.json`, dest: `${TEMPLATES_DIR}/gemini.json` },
+        { url: `${REPO_RAW}/config/chatgpt.json`, dest: `${TEMPLATES_DIR}/chatgpt.json` },
+      ];
+
+      const results = [];
+      for (const f of files) {
+        try {
+          shell(`curl -fsSL '${f.url}' -o '${f.dest}'`, 30000);
+          results.push({ file: f.dest, ok: true });
+        } catch (e) {
+          results.push({ file: f.dest, ok: false, error: e.message });
+        }
+      }
+
+      const allOk = results.every(r => r.ok);
+
+      // Restart management API service (systemd sẽ tự start lại với code mới)
+      // Dùng exec async để response kịp trả về trước khi process bị kill
+      if (allOk) {
+        json(res, 200, { ok: true, message: 'Update complete. Management API restarting...', files: results });
+        setTimeout(() => {
+          try { execSync('systemctl restart openclaw-mgmt', { timeout: 10000 }); } catch {}
+        }, 500);
+        return;
+      }
+
+      return json(res, 200, { ok: false, message: 'Some files failed to update', files: results });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
   // 404
   // =========================================================================
   json(res, 404, { ok: false, error: 'Not found' });

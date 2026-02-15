@@ -683,6 +683,32 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Self Update",
+      "item": [
+        {
+          "name": "Self Update Management API",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/self-update",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "self-update"]
+            },
+            "description": "Download latest Management API (server.js), docker-compose.yml, and config templates from GitHub. Restarts the Management API service after update.\n\nUpdated files:\n- /opt/openclaw-mgmt/server.js\n- /opt/openclaw/docker-compose.yml\n- /etc/openclaw/config/*.json (anthropic, openai, gemini, chatgpt)"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"ok\": true,\n  \"message\": \"Update complete. Management API restarting...\",\n  \"files\": [\n    { \"file\": \"/opt/openclaw-mgmt/server.js\", \"ok\": true },\n    { \"file\": \"/opt/openclaw/docker-compose.yml\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/anthropic.json\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/openai.json\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/gemini.json\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/chatgpt.json\", \"ok\": true }\n  ]\n}"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

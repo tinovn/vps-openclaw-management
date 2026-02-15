@@ -54,7 +54,8 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 /etc/openclaw/config/           # Template configs (khong sua)
 ├── anthropic.json
 ├── openai.json
-└── gemini.json
+├── gemini.json
+└── chatgpt.json
 ```
 
 ## Management API
@@ -89,6 +90,7 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 | `DELETE` | `/api/env/:key` | Xoa env var |
 | `GET` | `/api/system` | System info |
 | `POST` | `/api/cli` | Proxy CLI commands vao container |
+| `POST` | `/api/self-update` | Cap nhat Management API + docker-compose + config templates tu GitHub |
 
 ### Vi du su dung
 
