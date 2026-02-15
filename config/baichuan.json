@@ -14,7 +14,17 @@
     "providers": {
       "baichuan": {
         "baseUrl": "https://api.baichuan-ai.com/v1",
-        "models": ["Baichuan4", "Baichuan3-Turbo", "Baichuan2-Turbo"]
+        "models": [
+          {
+            "id": "Baichuan4"
+          },
+          {
+            "id": "Baichuan3-Turbo"
+          },
+          {
+            "id": "Baichuan2-Turbo"
+          }
+        ]
       }
     }
   },
@@ -24,7 +34,11 @@
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": [
+      "172.16.0.0/12",
+      "10.0.0.0/8",
+      "192.168.0.0/16"
+    ],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

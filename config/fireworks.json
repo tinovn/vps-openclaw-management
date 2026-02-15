@@ -14,7 +14,14 @@
     "providers": {
       "fireworks": {
         "baseUrl": "https://api.fireworks.ai/inference/v1",
-        "models": ["accounts/fireworks/models/llama-v3p3-70b-instruct", "accounts/fireworks/models/qwen2p5-72b-instruct"]
+        "models": [
+          {
+            "id": "accounts/fireworks/models/llama-v3p3-70b-instruct"
+          },
+          {
+            "id": "accounts/fireworks/models/qwen2p5-72b-instruct"
+          }
+        ]
       }
     }
   },
@@ -24,7 +31,11 @@
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": [
+      "172.16.0.0/12",
+      "10.0.0.0/8",
+      "192.168.0.0/16"
+    ],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

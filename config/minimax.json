@@ -14,7 +14,17 @@
     "providers": {
       "minimax": {
         "baseUrl": "https://api.minimax.io/v1",
-        "models": ["MiniMax-M2.5", "MiniMax-M2.5-highspeed", "MiniMax-Text-01"]
+        "models": [
+          {
+            "id": "MiniMax-M2.5"
+          },
+          {
+            "id": "MiniMax-M2.5-highspeed"
+          },
+          {
+            "id": "MiniMax-Text-01"
+          }
+        ]
       }
     }
   },
@@ -24,7 +34,11 @@
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": [
+      "172.16.0.0/12",
+      "10.0.0.0/8",
+      "192.168.0.0/16"
+    ],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

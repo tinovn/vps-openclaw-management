@@ -14,7 +14,14 @@
     "providers": {
       "novita": {
         "baseUrl": "https://api.novita.ai/v3/openai",
-        "models": ["deepseek/deepseek-r1", "deepseek/deepseek-v3"]
+        "models": [
+          {
+            "id": "deepseek/deepseek-r1"
+          },
+          {
+            "id": "deepseek/deepseek-v3"
+          }
+        ]
       }
     }
   },
@@ -24,7 +31,11 @@
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": [
+      "172.16.0.0/12",
+      "10.0.0.0/8",
+      "192.168.0.0/16"
+    ],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

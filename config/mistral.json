@@ -14,7 +14,20 @@
     "providers": {
       "mistral": {
         "baseUrl": "https://api.mistral.ai/v1",
-        "models": ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "codestral-latest"]
+        "models": [
+          {
+            "id": "mistral-large-latest"
+          },
+          {
+            "id": "mistral-medium-latest"
+          },
+          {
+            "id": "mistral-small-latest"
+          },
+          {
+            "id": "codestral-latest"
+          }
+        ]
       }
     }
   },
@@ -24,7 +37,11 @@
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": [
+      "172.16.0.0/12",
+      "10.0.0.0/8",
+      "192.168.0.0/16"
+    ],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

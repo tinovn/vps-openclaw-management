@@ -14,7 +14,14 @@
     "providers": {
       "deepseek": {
         "baseUrl": "https://api.deepseek.com/v1",
-        "models": ["deepseek-chat", "deepseek-reasoner"]
+        "models": [
+          {
+            "id": "deepseek-chat"
+          },
+          {
+            "id": "deepseek-reasoner"
+          }
+        ]
       }
     }
   },
@@ -24,7 +31,11 @@
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": [
+      "172.16.0.0/12",
+      "10.0.0.0/8",
+      "192.168.0.0/16"
+    ],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

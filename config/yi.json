@@ -14,7 +14,17 @@
     "providers": {
       "yi": {
         "baseUrl": "https://api.01.ai/v1",
-        "models": ["yi-lightning", "yi-large", "yi-medium"]
+        "models": [
+          {
+            "id": "yi-lightning"
+          },
+          {
+            "id": "yi-large"
+          },
+          {
+            "id": "yi-medium"
+          }
+        ]
       }
     }
   },
@@ -24,7 +34,11 @@
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": [
+      "172.16.0.0/12",
+      "10.0.0.0/8",
+      "192.168.0.0/16"
+    ],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true

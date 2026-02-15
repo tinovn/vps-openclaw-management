@@ -14,7 +14,17 @@
     "providers": {
       "xai": {
         "baseUrl": "https://api.x.ai/v1",
-        "models": ["grok-3-latest", "grok-3-mini-latest", "grok-2-latest"]
+        "models": [
+          {
+            "id": "grok-3-latest"
+          },
+          {
+            "id": "grok-3-mini-latest"
+          },
+          {
+            "id": "grok-2-latest"
+          }
+        ]
       }
     }
   },
@@ -24,7 +34,11 @@
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": [
+      "172.16.0.0/12",
+      "10.0.0.0/8",
+      "192.168.0.0/16"
+    ],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true
