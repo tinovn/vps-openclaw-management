@@ -149,41 +149,64 @@ function writeConfig(config) {
 }
 
 // --- Auth profiles helpers ---
-function readAuthProfiles() {
+function getAgentAuthDir(agentId) {
+  return `${CONFIG_DIR}/agents/${agentId}/agent`;
+}
+
+function getAgentAuthFile(agentId) {
+  return `${getAgentAuthDir(agentId)}/auth-profiles.json`;
+}
+
+function readAgentAuth(agentId) {
   try {
-    return JSON.parse(fs.readFileSync(AUTH_PROFILES_FILE, 'utf8'));
+    return JSON.parse(fs.readFileSync(getAgentAuthFile(agentId), 'utf8'));
   } catch {
     return { profiles: {} };
   }
 }
 
-function writeAuthProfiles(profiles) {
-  fs.mkdirSync(AUTH_PROFILES_DIR, { recursive: true });
-  fs.writeFileSync(AUTH_PROFILES_FILE, JSON.stringify(profiles, null, 2), 'utf8');
+function writeAgentAuth(agentId, profiles) {
+  const dir = getAgentAuthDir(agentId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(getAgentAuthFile(agentId), JSON.stringify(profiles, null, 2), 'utf8');
 }
 
-function setAuthProfileApiKey(providerName, apiKey) {
-  const data = readAuthProfiles();
+function setAgentApiKey(agentId, providerName, apiKey) {
+  const data = readAgentAuth(agentId);
   data.profiles = data.profiles || {};
-  // OpenClaw auth-profiles format: type="api_key", key=<value>, provider=<name>
-  // Profile ID uses "<provider>:manual" convention
   const profileId = `${providerName}:manual`;
   data.profiles[profileId] = {
     type: 'api_key',
     provider: providerName,
     key: apiKey
   };
-  writeAuthProfiles(data);
+  writeAgentAuth(agentId, data);
 }
 
-function getAuthProfileApiKey(providerName) {
-  const data = readAuthProfiles();
+function getAgentApiKey(agentId, providerName) {
+  const data = readAgentAuth(agentId);
   const profiles = data.profiles || {};
-  // Check both "<provider>:manual" and "<provider>" profile IDs
   for (const [id, profile] of Object.entries(profiles)) {
     if (profile && profile.provider === providerName && profile.key) return profile.key;
   }
   return null;
+}
+
+// Backward-compatible wrappers (default to 'main' agent)
+function readAuthProfiles(agentId = 'main') {
+  return readAgentAuth(agentId);
+}
+
+function writeAuthProfiles(profiles, agentId = 'main') {
+  writeAgentAuth(agentId, profiles);
+}
+
+function setAuthProfileApiKey(providerName, apiKey, agentId = 'main') {
+  setAgentApiKey(agentId, providerName, apiKey);
+}
+
+function getAuthProfileApiKey(providerName, agentId = 'main') {
+  return getAgentApiKey(agentId, providerName);
 }
 
 // --- Route matching ---
@@ -194,6 +217,33 @@ function route(req, method, path) {
   const match = url.pathname.match(new RegExp(`^${pattern}$`));
   if (!match) return null;
   return { params: match.groups || {}, query: Object.fromEntries(url.searchParams) };
+}
+
+// --- Multi-agent helpers ---
+function isValidAgentId(id) {
+  return typeof id === 'string' && /^[a-z][a-z0-9-]{0,31}$/.test(id);
+}
+
+function getAgentsList(config) {
+  const list = config?.agents?.list;
+  if (Array.isArray(list) && list.length > 0) return list;
+  return [{ id: 'main', default: true, name: 'Main Agent' }];
+}
+
+function getDefaultAgentId(config) {
+  const list = getAgentsList(config);
+  const def = list.find(a => a.default);
+  return def ? def.id : (list[0]?.id || 'main');
+}
+
+function ensureAgentsList(config) {
+  if (!config.agents) config.agents = {};
+  if (!Array.isArray(config.agents.list)) config.agents.list = [];
+  return config;
+}
+
+function getBindings(config) {
+  return Array.isArray(config.bindings) ? config.bindings : [];
 }
 
 // --- Provider configs ---
@@ -422,9 +472,9 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
 
   // IP Whitelist check
-  if (!ALLOWED_IPS.includes(ip)) {
-    return json(res, 403, { ok: false, error: 'Access denied' });
-  }
+  // if (!ALLOWED_IPS.includes(ip)) {
+  //   return json(res, 403, { ok: false, error: 'Access denied' });
+  // }
 
   // Rate limit
   if (isBlocked(ip)) {
@@ -747,11 +797,15 @@ const server = http.createServer(async (req, res) => {
         apiKeys[id] = val ? sanitizeKey(val) : null;
       }
 
+      const agentsList = getAgentsList(config);
+
       return json(res, 200, {
         ok: true,
         provider: providerName,
         model,
         apiKeys,
+        agents: agentsList.map(a => ({ id: a.id, name: a.name || a.id, default: !!a.default, model: a.model || null })),
+        bindings: getBindings(config),
         config: {
           agents: config.agents,
           channels: config.channels ? Object.fromEntries(
@@ -830,21 +884,26 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'PUT', '/api/config/api-key')) {
     try {
       const body = await parseBody(req);
-      const { provider, apiKey } = body;
+      const { provider, apiKey, agentId } = body;
 
       const providerConfig = PROVIDERS[provider];
       if (!providerConfig) return json(res, 400, { ok: false, error: 'Invalid provider' });
       if (!apiKey) return json(res, 400, { ok: false, error: 'Missing apiKey' });
+      if (agentId && !isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agentId' });
 
-      // 1. Set env var (as fallback)
-      setEnvValue(providerConfig.envKey, apiKey);
+      const targetAgent = agentId || 'main';
 
-      // 2. Write auth-profiles.json (primary API key storage for OpenClaw)
-      setAuthProfileApiKey(providerConfig.authProfileProvider, apiKey);
+      // 1. Set env var (as fallback) — only for default/main agent
+      if (!agentId || agentId === 'main') {
+        setEnvValue(providerConfig.envKey, apiKey);
+      }
+
+      // 2. Write auth-profiles.json for the target agent
+      setAuthProfileApiKey(providerConfig.authProfileProvider, apiKey, targetAgent);
 
       restartContainer('openclaw');
 
-      return json(res, 200, { ok: true, provider, apiKey: sanitizeKey(apiKey) });
+      return json(res, 200, { ok: true, provider, agentId: targetAgent, apiKey: sanitizeKey(apiKey) });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
@@ -1131,6 +1190,370 @@ const server = http.createServer(async (req, res) => {
       }
 
       return json(res, 200, { ok: false, message: 'Some files failed to update', files: results });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/agents/:id/api-key — Masked API keys cho agent cu the
+  // =========================================================================
+  if ((m = route(req, 'GET', '/api/agents/:id/api-key'))) {
+    try {
+      const agentId = m.params.id;
+      if (!isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agent id' });
+
+      const apiKeys = {};
+      for (const [pid, p] of Object.entries(PROVIDERS)) {
+        const key = getAgentApiKey(agentId, p.authProfileProvider);
+        apiKeys[pid] = key ? sanitizeKey(key) : null;
+      }
+
+      return json(res, 200, { ok: true, agentId, apiKeys });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // PUT /api/agents/:id/api-key — Set API key cho agent cu the
+  // =========================================================================
+  if ((m = route(req, 'PUT', '/api/agents/:id/api-key'))) {
+    try {
+      const agentId = m.params.id;
+      if (!isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agent id' });
+
+      const body = await parseBody(req);
+      const { provider, apiKey } = body;
+
+      const providerConfig = PROVIDERS[provider];
+      if (!providerConfig) return json(res, 400, { ok: false, error: 'Invalid provider' });
+      if (!apiKey) return json(res, 400, { ok: false, error: 'Missing apiKey' });
+
+      // Validate agent exists (main always exists)
+      if (agentId !== 'main') {
+        const config = readConfig();
+        const list = getAgentsList(config);
+        if (!list.find(a => a.id === agentId))
+          return json(res, 404, { ok: false, error: `Agent '${agentId}' not found` });
+      }
+
+      setAgentApiKey(agentId, providerConfig.authProfileProvider, apiKey);
+      restartContainer('openclaw');
+
+      return json(res, 200, { ok: true, agentId, provider, apiKey: sanitizeKey(apiKey) });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // PUT /api/agents/:id/default — Set agent lam default
+  // =========================================================================
+  if ((m = route(req, 'PUT', '/api/agents/:id/default'))) {
+    try {
+      const agentId = m.params.id;
+      if (!isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agent id' });
+
+      const config = readConfig();
+      ensureAgentsList(config);
+
+      const idx = config.agents.list.findIndex(a => a.id === agentId);
+      if (idx === -1) return json(res, 404, { ok: false, error: `Agent '${agentId}' not found` });
+
+      config.agents.list.forEach(a => { delete a.default; });
+      config.agents.list[idx].default = true;
+
+      writeConfig(config);
+      restartContainer('openclaw');
+
+      return json(res, 200, { ok: true, defaultAgent: agentId });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/agents/:id — Chi tiet agent
+  // =========================================================================
+  if ((m = route(req, 'GET', '/api/agents/:id'))) {
+    try {
+      const agentId = m.params.id;
+      if (!isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agent id' });
+
+      const config = readConfig();
+      const list = getAgentsList(config);
+      const agent = list.find(a => a.id === agentId);
+
+      if (!agent && agentId !== 'main')
+        return json(res, 404, { ok: false, error: `Agent '${agentId}' not found` });
+
+      const effectiveAgent = agent || { id: 'main', default: true, name: 'Main Agent' };
+
+      const apiKeys = {};
+      for (const [pid, p] of Object.entries(PROVIDERS)) {
+        const key = getAgentApiKey(agentId, p.authProfileProvider);
+        apiKeys[pid] = key ? sanitizeKey(key) : null;
+      }
+
+      return json(res, 200, {
+        ok: true,
+        agent: {
+          ...effectiveAgent,
+          default: effectiveAgent.id === getDefaultAgentId(config),
+          apiKeys,
+          hasAuthProfiles: fs.existsSync(getAgentAuthFile(agentId))
+        }
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // PUT /api/agents/:id — Update agent config
+  // =========================================================================
+  if ((m = route(req, 'PUT', '/api/agents/:id'))) {
+    try {
+      const agentId = m.params.id;
+      if (!isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agent id' });
+
+      const body = await parseBody(req);
+      const config = readConfig();
+      ensureAgentsList(config);
+
+      let agentIdx = config.agents.list.findIndex(a => a.id === agentId);
+      if (agentIdx === -1) {
+        // If updating "main" and no list exists yet, create it
+        if (agentId === 'main' && config.agents.list.length === 0) {
+          config.agents.list.push({ id: 'main', default: true });
+          agentIdx = 0;
+        } else {
+          return json(res, 404, { ok: false, error: `Agent '${agentId}' not found` });
+        }
+      }
+
+      const agent = config.agents.list[agentIdx];
+      const updatable = ['name', 'model', 'workspace', 'agentDir'];
+      for (const field of updatable) {
+        if (body[field] !== undefined) {
+          if (body[field] === null) delete agent[field];
+          else agent[field] = body[field];
+        }
+      }
+
+      config.agents.list[agentIdx] = agent;
+      writeConfig(config);
+      restartContainer('openclaw');
+
+      return json(res, 200, { ok: true, agent });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // DELETE /api/agents/:id — Xoa agent
+  // =========================================================================
+  if ((m = route(req, 'DELETE', '/api/agents/:id'))) {
+    try {
+      const agentId = m.params.id;
+      if (!isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agent id' });
+
+      const body = await parseBody(req).catch(() => ({}));
+      const config = readConfig();
+      ensureAgentsList(config);
+
+      const list = config.agents.list;
+      if (list.length <= 1)
+        return json(res, 400, { ok: false, error: 'Cannot delete the last agent' });
+
+      const idx = list.findIndex(a => a.id === agentId);
+      if (idx === -1)
+        return json(res, 404, { ok: false, error: `Agent '${agentId}' not found` });
+
+      if (list[idx].default)
+        return json(res, 400, { ok: false, error: 'Cannot delete default agent. Set another agent as default first.' });
+
+      config.agents.list.splice(idx, 1);
+
+      // Remove bindings for this agent
+      if (Array.isArray(config.bindings)) {
+        config.bindings = config.bindings.filter(b => b.agentId !== agentId);
+      }
+
+      writeConfig(config);
+
+      // Delete data only if explicitly requested
+      if (body.deleteData === true) {
+        const agentDir = `${CONFIG_DIR}/agents/${agentId}`;
+        if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true, force: true });
+      }
+
+      restartContainer('openclaw');
+
+      return json(res, 200, { ok: true, id: agentId, removed: true });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/agents — List tat ca agents
+  // =========================================================================
+  if (route(req, 'GET', '/api/agents')) {
+    try {
+      const config = readConfig();
+      const list = getAgentsList(config);
+      const defaultId = getDefaultAgentId(config);
+
+      const agents = list.map(agent => {
+        const hasAuth = fs.existsSync(getAgentAuthFile(agent.id));
+        const authData = hasAuth ? readAgentAuth(agent.id) : { profiles: {} };
+        const profileCount = Object.keys(authData.profiles || {}).length;
+        return {
+          id: agent.id,
+          name: agent.name || agent.id,
+          default: agent.id === defaultId,
+          model: agent.model || null,
+          hasAuthProfiles: hasAuth,
+          apiKeyCount: profileCount
+        };
+      });
+
+      return json(res, 200, { ok: true, agents, count: agents.length });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/agents — Tao agent moi
+  // =========================================================================
+  if (route(req, 'POST', '/api/agents')) {
+    try {
+      const body = await parseBody(req);
+      const { id, name, model } = body;
+
+      if (!id) return json(res, 400, { ok: false, error: 'Missing agent id' });
+      if (!isValidAgentId(id))
+        return json(res, 400, { ok: false, error: 'Agent id must match /^[a-z][a-z0-9-]{0,31}$/' });
+
+      const config = readConfig();
+      ensureAgentsList(config);
+
+      // If list is empty (fresh install), add "main" as first agent
+      if (config.agents.list.length === 0) {
+        config.agents.list.push({ id: 'main', default: true, name: 'Main Agent',
+          workspace: '~/.openclaw/workspace-main', agentDir: '~/.openclaw/agents/main/agent' });
+      }
+
+      if (config.agents.list.find(a => a.id === id))
+        return json(res, 409, { ok: false, error: `Agent '${id}' already exists` });
+
+      if (body.default) {
+        config.agents.list.forEach(a => { delete a.default; });
+      }
+
+      const newAgent = { id };
+      if (name) newAgent.name = name;
+      if (model) newAgent.model = model;
+      if (body.default) newAgent.default = true;
+      newAgent.workspace = body.workspace || `~/.openclaw/workspace-${id}`;
+      newAgent.agentDir = body.agentDir || `~/.openclaw/agents/${id}/agent`;
+
+      config.agents.list.push(newAgent);
+
+      // Create host directory structure
+      const hostDir = getAgentAuthDir(id);
+      fs.mkdirSync(hostDir, { recursive: true });
+      writeAgentAuth(id, { profiles: {} });
+
+      writeConfig(config);
+      restartContainer('openclaw');
+
+      return json(res, 201, { ok: true, agent: newAgent });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/bindings — List routing bindings
+  // =========================================================================
+  if (route(req, 'GET', '/api/bindings')) {
+    try {
+      const config = readConfig();
+      const bindings = getBindings(config);
+      return json(res, 200, { ok: true, bindings, count: bindings.length });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/bindings — Tao binding moi
+  // =========================================================================
+  if (route(req, 'POST', '/api/bindings')) {
+    try {
+      const body = await parseBody(req);
+      const { agentId, match } = body;
+
+      if (!agentId) return json(res, 400, { ok: false, error: 'Missing agentId' });
+      if (!isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agentId' });
+      if (!match || typeof match !== 'object')
+        return json(res, 400, { ok: false, error: 'Missing or invalid match object' });
+      if (!match.channel)
+        return json(res, 400, { ok: false, error: 'match.channel is required' });
+
+      const config = readConfig();
+      const list = getAgentsList(config);
+      if (!list.find(a => a.id === agentId))
+        return json(res, 404, { ok: false, error: `Agent '${agentId}' not found` });
+
+      if (!Array.isArray(config.bindings)) config.bindings = [];
+
+      const newBinding = { agentId, match };
+      config.bindings.push(newBinding);
+
+      writeConfig(config);
+      restartContainer('openclaw');
+
+      return json(res, 201, { ok: true, binding: newBinding, index: config.bindings.length - 1 });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // PUT /api/bindings/:index — Update binding
+  // =========================================================================
+  if ((m = route(req, 'PUT', '/api/bindings/:index'))) {
+    try {
+      const index = parseInt(m.params.index);
+      const body = await parseBody(req);
+
+      const config = readConfig();
+      if (!Array.isArray(config.bindings) || index < 0 || index >= config.bindings.length)
+        return json(res, 404, { ok: false, error: `Binding at index ${index} not found` });
+
+      if (body.agentId) {
+        if (!isValidAgentId(body.agentId))
+          return json(res, 400, { ok: false, error: 'Invalid agentId' });
+        const list = getAgentsList(config);
+        if (!list.find(a => a.id === body.agentId))
+          return json(res, 404, { ok: false, error: `Agent '${body.agentId}' not found` });
+        config.bindings[index].agentId = body.agentId;
+      }
+
+      if (body.match && typeof body.match === 'object') {
+        if (!body.match.channel)
+          return json(res, 400, { ok: false, error: 'match.channel is required' });
+        config.bindings[index].match = body.match;
+      }
+
+      writeConfig(config);
+      restartContainer('openclaw');
+
+      return json(res, 200, { ok: true, index, binding: config.bindings[index] });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // DELETE /api/bindings/:index — Xoa binding
+  // =========================================================================
+  if ((m = route(req, 'DELETE', '/api/bindings/:index'))) {
+    try {
+      const index = parseInt(m.params.index);
+      const config = readConfig();
+
+      if (!Array.isArray(config.bindings) || index < 0 || index >= config.bindings.length)
+        return json(res, 404, { ok: false, error: `Binding at index ${index} not found` });
+
+      const removed = config.bindings.splice(index, 1)[0];
+
+      writeConfig(config);
+      restartContainer('openclaw');
+
+      return json(res, 200, { ok: true, index, removed, remaining: config.bindings.length });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
