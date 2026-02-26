@@ -1190,12 +1190,14 @@ const server = http.createServer(async (req, res) => {
         if (migrated) writeConfig(liveConfig);
       } catch {}
 
-      // Apply docker-compose changes (start new services if any)
+      // Apply docker-compose changes + always restart openclaw container
+      // (config migration changes mounted volume, gateway only reads config at startup)
       let composeResult = null;
       try {
         composeResult = dockerCompose('up -d --remove-orphans', 120000);
+        dockerCompose('restart openclaw', 60000);
       } catch (e) {
-        composeResult = e.message;
+        composeResult = (composeResult || '') + ' ' + e.message;
       }
 
       // Restart management API service (systemd sẽ tự start lại với code mới)
