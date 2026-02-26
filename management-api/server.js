@@ -852,6 +852,8 @@ const server = http.createServer(async (req, res) => {
       // Merge gateway: keep existing settings, ensure auth token is correct
       config.gateway = { ...template.gateway, ...(config.gateway || {}) };
       config.gateway.auth = { token };
+      // Deep merge controlUi from template (ensure new required fields are always present)
+      config.gateway.controlUi = { ...template.gateway.controlUi, ...(config.gateway.controlUi || {}) };
 
       // Preserve browser from template if not set
       if (!config.browser) config.browser = template.browser;
