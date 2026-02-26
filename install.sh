@@ -206,19 +206,6 @@ fi
 log "Tao file .env..."
 DROPLET_IP=$(hostname -I | awk '{print $1}')
 
-# Detect RAM va tinh NODE_OPTIONS
-TOTAL_RAM_MB=$(free -m | awk '/^Mem:/{print $2}')
-if [ "${TOTAL_RAM_MB}" -le 1024 ]; then
-    NODE_HEAP_SIZE=512
-elif [ "${TOTAL_RAM_MB}" -le 2048 ]; then
-    NODE_HEAP_SIZE=1024
-elif [ "${TOTAL_RAM_MB}" -le 4096 ]; then
-    NODE_HEAP_SIZE=2048
-else
-    NODE_HEAP_SIZE=4096
-fi
-log "RAM: ${TOTAL_RAM_MB}MB -> NODE_OPTIONS=--max-old-space-size=${NODE_HEAP_SIZE}"
-
 cat > ${INSTALL_DIR}/.env << EOF
 # OpenClaw Environment Configuration
 # Sau khi thay doi, restart: docker compose restart openclaw
@@ -233,8 +220,8 @@ OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN}
 # Management API
 OPENCLAW_MGMT_API_KEY=${MGMT_API_KEY}
 
-# Node.js Memory (auto-detected: ${TOTAL_RAM_MB}MB RAM)
-NODE_OPTIONS=--max-old-space-size=${NODE_HEAP_SIZE}
+# Node.js Memory (80% of system RAM)
+NODE_OPTIONS=--max-old-space-size=$(( $(free -m | awk '/^Mem:/{print $2}') * 80 / 100 ))
 
 # AI Provider API Keys (uncomment va dien)
 # ANTHROPIC_API_KEY=your_key_here

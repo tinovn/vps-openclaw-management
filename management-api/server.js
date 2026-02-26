@@ -1173,15 +1173,10 @@ const server = http.createServer(async (req, res) => {
 
       const allOk = results.every(r => r.ok);
 
-      // --- Migrate .env: ensure NODE_OPTIONS is set based on system RAM ---
+      // --- Migrate .env: ensure NODE_OPTIONS is set (80% of system RAM) ---
       try {
         if (!getEnvValue('NODE_OPTIONS')) {
-          const totalRamMB = Math.round(os.totalmem() / 1024 / 1024);
-          let heapSize;
-          if (totalRamMB <= 1024) heapSize = 512;
-          else if (totalRamMB <= 2048) heapSize = 1024;
-          else if (totalRamMB <= 4096) heapSize = 2048;
-          else heapSize = 4096;
+          const heapSize = Math.round(os.totalmem() / 1024 / 1024 * 0.8);
           setEnvValue('NODE_OPTIONS', `--max-old-space-size=${heapSize}`);
         }
       } catch {}
@@ -1598,18 +1593,12 @@ const server = http.createServer(async (req, res) => {
   json(res, 404, { ok: false, error: 'Not found' });
 });
 
-// --- Startup migration: ensure NODE_OPTIONS in .env ---
+// --- Startup migration: ensure NODE_OPTIONS in .env (80% of system RAM) ---
 try {
   if (!getEnvValue('NODE_OPTIONS')) {
-    const totalRamMB = Math.round(os.totalmem() / 1024 / 1024);
-    let heapSize;
-    if (totalRamMB <= 1024) heapSize = 512;
-    else if (totalRamMB <= 2048) heapSize = 1024;
-    else if (totalRamMB <= 4096) heapSize = 2048;
-    else heapSize = 4096;
+    const heapSize = Math.round(os.totalmem() / 1024 / 1024 * 0.8);
     setEnvValue('NODE_OPTIONS', `--max-old-space-size=${heapSize}`);
-    console.log(`[Migration] Set NODE_OPTIONS=--max-old-space-size=${heapSize} (RAM: ${totalRamMB}MB)`);
-    // Restart container to apply new memory setting
+    console.log(`[Migration] Set NODE_OPTIONS=--max-old-space-size=${heapSize}`);
     try { dockerCompose('restart openclaw', 60000); } catch {}
   }
 } catch {}
