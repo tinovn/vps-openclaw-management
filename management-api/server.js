@@ -1621,6 +1621,22 @@ const server = http.createServer(async (req, res) => {
   json(res, 404, { ok: false, error: 'Not found' });
 });
 
+// --- Startup migration: ensure NODE_OPTIONS in .env ---
+try {
+  if (!getEnvValue('NODE_OPTIONS')) {
+    const totalRamMB = Math.round(os.totalmem() / 1024 / 1024);
+    let heapSize;
+    if (totalRamMB <= 1024) heapSize = 512;
+    else if (totalRamMB <= 2048) heapSize = 1024;
+    else if (totalRamMB <= 4096) heapSize = 2048;
+    else heapSize = 4096;
+    setEnvValue('NODE_OPTIONS', `--max-old-space-size=${heapSize}`);
+    console.log(`[Migration] Set NODE_OPTIONS=--max-old-space-size=${heapSize} (RAM: ${totalRamMB}MB)`);
+    // Restart container to apply new memory setting
+    try { dockerCompose('restart openclaw', 60000); } catch {}
+  }
+} catch {}
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[Management API] Running on http://0.0.0.0:${PORT}`);
 });
