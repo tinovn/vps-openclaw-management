@@ -35,7 +35,8 @@
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true,
-      "dangerouslyAllowHostHeaderOriginFallback": true
+      "dangerouslyAllowHostHeaderOriginFallback": true,
+      "dangerouslyDisableDeviceAuth": true
     }
   },
   "browser": {
