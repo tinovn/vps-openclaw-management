@@ -1173,6 +1173,17 @@ const server = http.createServer(async (req, res) => {
 
       const allOk = results.every(r => r.ok);
 
+      // --- Migrate existing openclaw.json: ensure required gateway settings ---
+      try {
+        const liveConfig = readConfig();
+        let migrated = false;
+        if (liveConfig.gateway?.controlUi && !liveConfig.gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback) {
+          liveConfig.gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback = true;
+          migrated = true;
+        }
+        if (migrated) writeConfig(liveConfig);
+      } catch {}
+
       // Apply docker-compose changes (start new services if any)
       let composeResult = null;
       try {
