@@ -1110,33 +1110,10 @@ const server = http.createServer(async (req, res) => {
           available: disk[2] || 'unknown',
           usagePercent: disk[3] || 'unknown'
         },
-        nodeHeap: (() => {
-          const opt = getEnvValue('NODE_OPTIONS') || '';
-          const m = opt.match(/--max-old-space-size=(\d+)/);
-          return m ? parseInt(m[1]) : null;
-        })(),
         nodeVersion: process.version,
         dockerVersion: (() => { try { return shell('docker --version'); } catch { return 'unknown'; } })()
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
-  }
-
-  // =========================================================================
-  // PUT /api/config/memory — Set Node.js heap size (MB), requires container restart
-  // =========================================================================
-  if (route(req, 'PUT', '/api/config/memory')) {
-    return parseBody(req, (body) => {
-      try {
-        const heapMB = parseInt(body.heapSizeMB);
-        if (!heapMB || heapMB < 256 || heapMB > 8192) {
-          return json(res, 400, { ok: false, error: 'heapSizeMB must be between 256 and 8192' });
-        }
-        setEnvValue('NODE_OPTIONS', `--max-old-space-size=${heapMB}`);
-        // Restart container to apply
-        dockerCompose('restart openclaw', 60000);
-        return json(res, 200, { ok: true, heapSizeMB: heapMB, message: 'Memory updated and container restarted' });
-      } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
-    });
   }
 
   // =========================================================================
