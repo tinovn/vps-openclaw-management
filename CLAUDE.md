@@ -47,7 +47,10 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 ├── .env                        # Environment vars (tokens, API keys)
 ├── Caddyfile
 ├── config/
-│   └── openclaw.json           # Config hien tai
+│   ├── openclaw.json           # Config hien tai
+│   └── agents/                 # Per-agent auth data
+│       └── <agentId>/agent/
+│           └── auth-profiles.json
 └── data/                       # Persistent data
 
 /opt/openclaw-mgmt/
@@ -111,6 +114,28 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 | `POST` | `/api/cli` | Proxy CLI commands vao container |
 | `POST` | `/api/self-update` | Cap nhat Management API + docker-compose + config templates tu GitHub |
 
+#### Multi-Agent Management
+
+| Method | Path | Mo ta |
+|--------|------|-------|
+| `GET` | `/api/agents` | List tat ca agents (kem API key count) |
+| `POST` | `/api/agents` | Tao agent moi |
+| `GET` | `/api/agents/:id` | Chi tiet agent (kem masked API keys) |
+| `PUT` | `/api/agents/:id` | Update agent (name, model, workspace) |
+| `DELETE` | `/api/agents/:id` | Xoa agent (khong cho xoa default hoac agent cuoi cung) |
+| `PUT` | `/api/agents/:id/default` | Set agent lam default |
+| `GET` | `/api/agents/:id/api-key` | Xem masked API keys cua agent |
+| `PUT` | `/api/agents/:id/api-key` | Set API key cho agent |
+
+#### Routing Bindings
+
+| Method | Path | Mo ta |
+|--------|------|-------|
+| `GET` | `/api/bindings` | List tat ca routing bindings |
+| `POST` | `/api/bindings` | Tao binding (agentId + match rules) |
+| `PUT` | `/api/bindings/:index` | Update binding |
+| `DELETE` | `/api/bindings/:index` | Xoa binding |
+
 ### Vi du su dung
 
 ```bash
@@ -130,6 +155,36 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/rebu
 # CLI proxy
 curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
   -d '{"command":"models scan"}' http://localhost:9998/api/cli
+```
+
+### Multi-Agent vi du
+
+```bash
+# List agents
+curl -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/agents
+
+# Tao agent moi
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
+  -d '{"id":"work","name":"Work Agent","model":"anthropic/claude-sonnet-4-20250514"}' \
+  http://localhost:9998/api/agents
+
+# Set API key cho agent
+curl -X PUT -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
+  -d '{"provider":"anthropic","apiKey":"sk-ant-xxx"}' \
+  http://localhost:9998/api/agents/work/api-key
+
+# Set agent lam default
+curl -X PUT -H "Authorization: Bearer $MGMT_KEY" \
+  http://localhost:9998/api/agents/work/default
+
+# Tao routing binding (route Telegram messages toi agent "work")
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
+  -d '{"agentId":"work","match":{"channel":"telegram"}}' \
+  http://localhost:9998/api/bindings
+
+# Xoa agent
+curl -X DELETE -H "Authorization: Bearer $MGMT_KEY" \
+  http://localhost:9998/api/agents/work
 ```
 
 ## Quy uoc
