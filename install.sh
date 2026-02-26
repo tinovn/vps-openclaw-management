@@ -313,7 +313,9 @@ cat > /etc/openclaw/config/anthropic.json << 'CONFIGEOF'
     "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
-      "allowInsecureAuth": true
+      "allowInsecureAuth": true,
+      "dangerouslyAllowHostHeaderOriginFallback": true,
+      "dangerouslyDisableDeviceAuth": true
     }
   },
   "browser": {
@@ -347,7 +349,9 @@ cat > /etc/openclaw/config/openai.json << 'CONFIGEOF'
     "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
-      "allowInsecureAuth": true
+      "allowInsecureAuth": true,
+      "dangerouslyAllowHostHeaderOriginFallback": true,
+      "dangerouslyDisableDeviceAuth": true
     }
   },
   "browser": {
@@ -381,7 +385,9 @@ cat > /etc/openclaw/config/gemini.json << 'CONFIGEOF'
     "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
-      "allowInsecureAuth": true
+      "allowInsecureAuth": true,
+      "dangerouslyAllowHostHeaderOriginFallback": true,
+      "dangerouslyDisableDeviceAuth": true
     }
   },
   "browser": {
