@@ -1177,9 +1177,15 @@ const server = http.createServer(async (req, res) => {
       try {
         const liveConfig = readConfig();
         let migrated = false;
-        if (liveConfig.gateway?.controlUi && !liveConfig.gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback) {
-          liveConfig.gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback = true;
-          migrated = true;
+        if (liveConfig.gateway) {
+          if (!liveConfig.gateway.controlUi) {
+            liveConfig.gateway.controlUi = { enabled: true, allowInsecureAuth: true, dangerouslyAllowHostHeaderOriginFallback: true };
+            migrated = true;
+          } else {
+            const ui = liveConfig.gateway.controlUi;
+            if (!ui.allowInsecureAuth) { ui.allowInsecureAuth = true; migrated = true; }
+            if (!ui.dangerouslyAllowHostHeaderOriginFallback) { ui.dangerouslyAllowHostHeaderOriginFallback = true; migrated = true; }
+          }
         }
         if (migrated) writeConfig(liveConfig);
       } catch {}
