@@ -102,7 +102,7 @@ if [ -n "${DOMAIN_ARG}" ]; then
 
     while [ $DNS_WAITED -lt $DNS_MAX_WAIT ]; do
         RESOLVED=$(curl -sf "https://1.1.1.1/dns-query?name=${DOMAIN_ARG}&type=A" -H "accept: application/dns-json" 2>/dev/null \
-            | grep -oE '"data":"[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"' | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+') || true
+            | grep -oE '"data":[ ]*"[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"' | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+') || true
 
         if [ "${RESOLVED}" = "${DROPLET_IP}" ]; then
             DNS_READY=true

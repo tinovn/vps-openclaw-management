@@ -518,7 +518,7 @@ const server = http.createServer(async (req, res) => {
       if (domain && !/^\d+\.\d+\.\d+\.\d+$/.test(domain)) {
         try {
           const out = shell(`curl -sf "https://1.1.1.1/dns-query?name=${domain}&type=A" -H "accept: application/dns-json" 2>/dev/null`, 10000);
-          const matches = out.match(/"data":"(\d+\.\d+\.\d+\.\d+)"/g) || [];
+          const matches = out.match(/"data":\s*"(\d+\.\d+\.\d+\.\d+)"/g) || [];
           const resolvedIPs = matches.map(m => m.match(/(\d+\.\d+\.\d+\.\d+)/)[1]);
           if (resolvedIPs.includes(serverIP)) {
             dnsStatus = 'ok';
@@ -616,7 +616,7 @@ const server = http.createServer(async (req, res) => {
       let resolvedIPs = [];
       try {
         const out = shell(`curl -sf "https://1.1.1.1/dns-query?name=${domain}&type=A" -H "accept: application/dns-json" 2>/dev/null`, 10000);
-        const matches = (out || '').match(/"data":"(\d+\.\d+\.\d+\.\d+)"/g) || [];
+        const matches = (out || '').match(/"data":\s*"(\d+\.\d+\.\d+\.\d+)"/g) || [];
         resolvedIPs = matches.map(m => m.match(/(\d+\.\d+\.\d+\.\d+)/)[1]);
       } catch {}
 
