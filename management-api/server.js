@@ -513,12 +513,13 @@ const server = http.createServer(async (req, res) => {
       try { caddyContent = fs.readFileSync(CADDYFILE, 'utf8'); } catch {}
       if (caddyContent.includes(`http://${host}`)) scheme = 'http';
 
-      // Kiem tra DNS domain da tro dung IP chua
+      // Kiem tra DNS domain da tro dung IP chua (dung Cloudflare DoH)
       let dnsStatus = null;
       if (domain && !/^\d+\.\d+\.\d+\.\d+$/.test(domain)) {
         try {
-          const out = shell(`dig +short A ${domain} 2>/dev/null`, 10000);
-          const resolvedIPs = out ? out.split('\n').map(ip => ip.trim()).filter(ip => /^\d+\.\d+\.\d+\.\d+$/.test(ip)) : [];
+          const out = shell(`curl -sf "https://1.1.1.1/dns-query?name=${domain}&type=A" -H "accept: application/dns-json" 2>/dev/null`, 10000);
+          const matches = out.match(/"data":"(\d+\.\d+\.\d+\.\d+)"/g) || [];
+          const resolvedIPs = matches.map(m => m.match(/(\d+\.\d+\.\d+\.\d+)/)[1]);
           if (resolvedIPs.includes(serverIP)) {
             dnsStatus = 'ok';
           } else {
@@ -610,20 +611,14 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: 'Invalid domain format' });
       }
 
-      // DNS check
+      // DNS check (Cloudflare DoH)
       const serverIP = getServerIP();
       let resolvedIPs = [];
       try {
-        const out = shell(`dig +short A ${domain} 2>/dev/null`, 10000);
-        if (out) resolvedIPs = out.split('\n').map(ip => ip.trim()).filter(ip => /^\d+\.\d+\.\d+\.\d+$/.test(ip));
+        const out = shell(`curl -sf "https://1.1.1.1/dns-query?name=${domain}&type=A" -H "accept: application/dns-json" 2>/dev/null`, 10000);
+        const matches = (out || '').match(/"data":"(\d+\.\d+\.\d+\.\d+)"/g) || [];
+        resolvedIPs = matches.map(m => m.match(/(\d+\.\d+\.\d+\.\d+)/)[1]);
       } catch {}
-      if (resolvedIPs.length === 0) {
-        try {
-          const out = shell(`host ${domain} 2>/dev/null`, 10000);
-          const matches = out.match(/has address (\d+\.\d+\.\d+\.\d+)/g);
-          if (matches) resolvedIPs = matches.map(s => s.replace('has address ', ''));
-        } catch {}
-      }
 
       if (resolvedIPs.length === 0) {
         return json(res, 400, { ok: false, error: `Cannot resolve DNS for ${domain}. Point A record to ${serverIP}.` });
