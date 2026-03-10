@@ -89,32 +89,34 @@ log "Doi apt lock..."
 wait_for_apt
 
 # =============================================================================
-# 1b. Doi DNS domain resolve dung IP cua VPS (neu co truyen --domain)
+# 1b. Kiem tra DNS domain (neu co truyen --domain)
+# Neu DNS chua resolve dung IP → dung self-signed cert, cai dat luon khong doi
+# Sau khi DNS san sang, dung Management API PUT /api/domain de chuyen Let's Encrypt
 # =============================================================================
+DNS_READY=false
 if [ -n "${DOMAIN_ARG}" ]; then
     DROPLET_IP=$(hostname -I | awk '{print $1}')
-    DNS_MAX_WAIT=300
+    DNS_MAX_WAIT=30
     DNS_WAITED=0
-    log "Doi DNS ${DOMAIN_ARG} resolve ve ${DROPLET_IP}..."
+    log "Kiem tra DNS ${DOMAIN_ARG} (doi toi da ${DNS_MAX_WAIT}s)..."
 
     while [ $DNS_WAITED -lt $DNS_MAX_WAIT ]; do
-        # Query DNS qua Cloudflare DoH (curl luon co san)
         RESOLVED=$(curl -sf "https://1.1.1.1/dns-query?name=${DOMAIN_ARG}&type=A" -H "accept: application/dns-json" 2>/dev/null \
-            | grep -oE '"data":"[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"' | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+            | grep -oE '"data":"[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"' | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+') || true
 
         if [ "${RESOLVED}" = "${DROPLET_IP}" ]; then
-            log "DNS OK: ${DOMAIN_ARG} -> ${DROPLET_IP}"
+            DNS_READY=true
+            log "DNS OK: ${DOMAIN_ARG} -> ${DROPLET_IP}. Se dung Let's Encrypt SSL."
             break
         fi
 
-        log "DNS chua san sang: ${DOMAIN_ARG} -> ${RESOLVED:-<empty>} (doi ${DROPLET_IP}). Doi 10 giay... (${DNS_WAITED}s/${DNS_MAX_WAIT}s)"
-        sleep 10
-        DNS_WAITED=$((DNS_WAITED + 10))
+        log "DNS chua san sang: ${DOMAIN_ARG} -> ${RESOLVED:-<empty>} (can ${DROPLET_IP}). Doi 5 giay... (${DNS_WAITED}s/${DNS_MAX_WAIT}s)"
+        sleep 5
+        DNS_WAITED=$((DNS_WAITED + 5))
     done
 
-    if [ $DNS_WAITED -ge $DNS_MAX_WAIT ]; then
-        log "Canh bao: DNS ${DOMAIN_ARG} chua resolve sau ${DNS_MAX_WAIT}s. Tiep tuc cai dat voi IP, se cau hinh domain sau."
-        DOMAIN_ARG=""
+    if [ "${DNS_READY}" = "false" ]; then
+        log "DNS ${DOMAIN_ARG} chua resolve sau ${DNS_MAX_WAIT}s. Dung self-signed cert truoc."
     fi
 fi
 
@@ -262,7 +264,7 @@ curl -fsSL "${REPO_RAW}/docker-compose.yml" -o ${INSTALL_DIR}/docker-compose.yml
 # =============================================================================
 # 10. Tao Caddyfile
 # =============================================================================
-if [ -n "${DOMAIN_ARG}" ]; then
+if [ -n "${DOMAIN_ARG}" ] && [ "${DNS_READY}" = "true" ]; then
     log "Tao Caddyfile voi domain ${DOMAIN_ARG} + Let's Encrypt SSL..."
     cat > ${INSTALL_DIR}/Caddyfile << EOF
 ${DOMAIN_ARG} {
@@ -271,6 +273,14 @@ ${DOMAIN_ARG} {
             dir https://acme-v02.api.letsencrypt.org/directory
         }
     }
+    reverse_proxy openclaw:18789
+}
+EOF
+elif [ -n "${DOMAIN_ARG}" ]; then
+    log "Tao Caddyfile voi domain ${DOMAIN_ARG} + self-signed cert (DNS chua san sang)..."
+    cat > ${INSTALL_DIR}/Caddyfile << EOF
+${DOMAIN_ARG} {
+    tls internal
     reverse_proxy openclaw:18789
 }
 EOF
