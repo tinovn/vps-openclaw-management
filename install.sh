@@ -277,9 +277,9 @@ ${DOMAIN_ARG} {
 }
 EOF
 elif [ -n "${DOMAIN_ARG}" ]; then
-    log "Tao Caddyfile voi domain ${DOMAIN_ARG} + self-signed cert (DNS chua san sang)..."
+    log "Tao Caddyfile voi domain ${DOMAIN_ARG} + IP ${DROPLET_IP} + self-signed cert (DNS chua san sang)..."
     cat > ${INSTALL_DIR}/Caddyfile << EOF
-${DOMAIN_ARG} {
+${DOMAIN_ARG}, ${DROPLET_IP} {
     tls internal
     reverse_proxy openclaw:18789
 }
