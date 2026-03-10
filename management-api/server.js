@@ -509,10 +509,31 @@ const server = http.createServer(async (req, res) => {
       const host = domain || serverIP;
       // Xac dinh scheme: neu Caddyfile dung http:// cho host hoac khong co tls → http
       let scheme = 'https';
-      try {
-        const caddyContent = fs.readFileSync(CADDYFILE, 'utf8');
-        if (caddyContent.includes(`http://${host}`)) scheme = 'http';
-      } catch {}
+      let caddyContent = '';
+      try { caddyContent = fs.readFileSync(CADDYFILE, 'utf8'); } catch {}
+      if (caddyContent.includes(`http://${host}`)) scheme = 'http';
+
+      // Kiem tra DNS domain da tro dung IP chua
+      let dnsStatus = null;
+      if (domain && !/^\d+\.\d+\.\d+\.\d+$/.test(domain)) {
+        try {
+          const out = shell(`dig +short A ${domain} 2>/dev/null`, 10000);
+          const resolvedIPs = out ? out.split('\n').map(ip => ip.trim()).filter(ip => /^\d+\.\d+\.\d+\.\d+$/.test(ip)) : [];
+          if (resolvedIPs.includes(serverIP)) {
+            dnsStatus = 'ok';
+          } else {
+            dnsStatus = 'not_pointed';
+          }
+        } catch {
+          dnsStatus = 'unknown';
+        }
+      }
+
+      // SSL status
+      const hasLetsEncrypt = caddyContent.includes('acme');
+      const hasSelfSigned = caddyContent.includes('tls internal');
+      const sslMode = hasLetsEncrypt ? 'letsencrypt' : hasSelfSigned ? 'self-signed' : 'none';
+
       return json(res, 200, {
         ok: true,
         domain: domain,
@@ -521,7 +542,10 @@ const server = http.createServer(async (req, res) => {
         gatewayToken: token,
         mgmtApiKey: sanitizeKey(getMgmtApiKey()),
         status,
-        version: getEnvValue('OPENCLAW_VERSION') || 'latest'
+        version: getEnvValue('OPENCLAW_VERSION') || 'latest',
+        ssl: sslMode,
+        dnsStatus,
+        ...(dnsStatus === 'not_pointed' ? { dnsWarning: `DNS for ${domain} does not point to ${serverIP}. Update your A record to enable Let's Encrypt SSL.` } : {})
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
