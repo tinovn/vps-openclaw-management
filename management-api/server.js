@@ -507,11 +507,17 @@ const server = http.createServer(async (req, res) => {
       } catch {}
 
       const host = domain || serverIP;
+      // Xac dinh scheme: neu Caddyfile dung http:// cho host hoac khong co tls → http
+      let scheme = 'https';
+      try {
+        const caddyContent = fs.readFileSync(CADDYFILE, 'utf8');
+        if (caddyContent.includes(`http://${host}`)) scheme = 'http';
+      } catch {}
       return json(res, 200, {
         ok: true,
         domain: domain,
         ip: serverIP,
-        dashboardUrl: `https://${host}?token=${token}`,
+        dashboardUrl: `${scheme}://${host}?token=${token}`,
         gatewayToken: token,
         mgmtApiKey: sanitizeKey(getMgmtApiKey()),
         status,

@@ -504,7 +504,12 @@ log "=== Cai dat OpenClaw hoan tat! ==="
 log ""
 log "=========================================="
 DASHBOARD_HOST="${DOMAIN_ARG:-${DROPLET_IP}}"
-log "  Dashboard: https://${DASHBOARD_HOST}?token=${GATEWAY_TOKEN}"
+if [ -n "${DOMAIN_ARG}" ]; then
+    DASHBOARD_SCHEME="https"
+else
+    DASHBOARD_SCHEME="http"
+fi
+log "  Dashboard: ${DASHBOARD_SCHEME}://${DASHBOARD_HOST}?token=${GATEWAY_TOKEN}"
 log "  Gateway Token: ${GATEWAY_TOKEN}"
 log ""
 log "  Management API: http://${DROPLET_IP}:${MGMT_API_PORT}"
