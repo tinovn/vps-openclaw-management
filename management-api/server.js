@@ -456,7 +456,7 @@ function getContainerStatus() {
 }
 
 function restartContainer(service = 'openclaw') {
-  dockerCompose(`restart ${service}`, 60000);
+  dockerCompose(`up -d ${service}`, 60000);
 }
 
 // =============================================================================
@@ -1229,7 +1229,6 @@ const server = http.createServer(async (req, res) => {
       let composeResult = null;
       try {
         composeResult = dockerCompose('up -d --remove-orphans', 120000);
-        dockerCompose('restart openclaw', 60000);
       } catch (e) {
         composeResult = (composeResult || '') + ' ' + e.message;
       }
@@ -1624,7 +1623,7 @@ try {
     const heapSize = Math.round(os.totalmem() / 1024 / 1024 * 0.8);
     setEnvValue('NODE_OPTIONS', `--max-old-space-size=${heapSize}`);
     console.log(`[Migration] Set NODE_OPTIONS=--max-old-space-size=${heapSize}`);
-    try { dockerCompose('restart openclaw', 60000); } catch {}
+    try { dockerCompose('up -d openclaw', 60000); } catch {}
   }
 } catch {}
 
