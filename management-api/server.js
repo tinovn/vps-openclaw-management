@@ -192,6 +192,16 @@ function getAgentApiKey(agentId, providerName) {
   return null;
 }
 
+function removeAgentApiKey(agentId, providerName) {
+  const data = readAgentAuth(agentId);
+  if (!data.profiles) return;
+  const profileId = `${providerName}:manual`;
+  if (data.profiles[profileId]) {
+    delete data.profiles[profileId];
+    writeAgentAuth(agentId, data);
+  }
+}
+
 // Backward-compatible wrappers (default to 'main' agent)
 function readAuthProfiles(agentId = 'main') {
   return readAgentAuth(agentId);
@@ -931,6 +941,34 @@ const server = http.createServer(async (req, res) => {
       restartContainer('openclaw');
 
       return json(res, 200, { ok: true, provider, agentId: targetAgent, apiKey: sanitizeKey(apiKey) });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // DELETE /api/config/api-key — Xoa API key
+  // =========================================================================
+  if (route(req, 'DELETE', '/api/config/api-key')) {
+    try {
+      const body = await parseBody(req);
+      const { provider, agentId } = body;
+
+      const providerConfig = PROVIDERS[provider];
+      if (!providerConfig) return json(res, 400, { ok: false, error: 'Invalid provider' });
+      if (agentId && !isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agentId' });
+
+      const targetAgent = agentId || 'main';
+
+      // 1. Remove from auth-profiles.json
+      removeAgentApiKey(targetAgent, providerConfig.authProfileProvider);
+
+      // 2. Remove env var (only for default/main agent)
+      if (!agentId || agentId === 'main') {
+        removeEnvValue(providerConfig.envKey);
+      }
+
+      restartContainer('openclaw');
+
+      return json(res, 200, { ok: true, provider, agentId: targetAgent, removed: true });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
