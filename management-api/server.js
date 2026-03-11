@@ -1101,6 +1101,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 403, { ok: false, error: 'Cannot remove protected environment variable' });
       }
       removeEnvValue(key);
+      restartContainer('openclaw');
       return json(res, 200, { ok: true, key, removed: true });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
