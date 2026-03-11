@@ -1085,7 +1085,8 @@ const server = http.createServer(async (req, res) => {
       }
 
       setEnvValue(key, body.value);
-      return json(res, 200, { ok: true, key, applied: true, note: 'Restart service for changes to take effect' });
+      restartContainer('openclaw');
+      return json(res, 200, { ok: true, key, applied: true });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
