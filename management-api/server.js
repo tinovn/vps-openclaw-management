@@ -1207,6 +1207,22 @@ const server = http.createServer(async (req, res) => {
       const REPO_RAW = 'https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main';
       const MGMT_API_DIR = '/opt/openclaw-mgmt';
 
+      // --- Pre-download migration: extract DOMAIN from old Caddyfile before overwriting ---
+      try {
+        if (!getEnvValue('DOMAIN')) {
+          const oldCaddy = fs.readFileSync(CADDYFILE, 'utf8');
+          const dm = oldCaddy.match(/^(\S+)\s*\{/m);
+          if (dm && !dm[1].startsWith('{')) {
+            setEnvValue('DOMAIN', dm[1]);
+            if (oldCaddy.includes('tls internal')) {
+              setEnvValue('CADDY_TLS', 'tls internal');
+            } else {
+              setEnvValue('CADDY_TLS', '');
+            }
+          }
+        }
+      } catch {}
+
       const configTemplates = [
         'anthropic', 'openai', 'gemini',
         'deepseek', 'groq', 'together', 'mistral', 'xai',
@@ -1260,25 +1276,7 @@ const server = http.createServer(async (req, res) => {
         if (migrated) writeConfig(liveConfig);
       } catch {}
 
-      // --- Migrate .env: ensure DOMAIN is set (extract from old Caddyfile if needed) ---
-      try {
-        if (!getEnvValue('DOMAIN')) {
-          const oldCaddy = fs.readFileSync(CADDYFILE, 'utf8');
-          const dm = oldCaddy.match(/^(\S+)\s*\{/m);
-          if (dm && !dm[1].startsWith('{')) {
-            setEnvValue('DOMAIN', dm[1]);
-            // If old Caddyfile had acme/Let's Encrypt, CADDY_TLS should be empty
-            // If it had tls internal, set CADDY_TLS accordingly
-            if (oldCaddy.includes('tls internal')) {
-              setEnvValue('CADDY_TLS', 'tls internal');
-            } else {
-              setEnvValue('CADDY_TLS', '');
-            }
-          }
-        }
-      } catch {}
-
-      // Apply docker-compose changes + always restart openclaw container
+      // Apply docker-compose changes
       // (config migration changes mounted volume, gateway only reads config at startup)
       let composeResult = null;
       try {
