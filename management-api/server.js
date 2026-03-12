@@ -1869,6 +1869,8 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;bac
 .error{background:#7f1d1d;color:#fca5a5;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none}
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
+.copyright{text-align:center;margin-top:12px}
+.copyright p{font-size:14px;color:#94a3b8;margin-top:4px}
 </style>
 </head>
 <body>
