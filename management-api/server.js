@@ -1858,6 +1858,7 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;bac
 .logo{text-align:center;margin-bottom:32px}
 .logo h1{font-size:24px;font-weight:700;color:#f8fafc}
 .logo p{font-size:14px;color:#94a3b8;margin-top:4px}
+.logo .credit{font-size:12px;color:#64748b;margin-top:6px}
 .form-group{margin-bottom:20px}
 .form-group label{display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px}
 .form-group input{width:100%;padding:12px 16px;background:#0f172a;border:1px solid #334155;border-radius:10px;color:#f8fafc;font-size:15px;outline:none;transition:border-color .2s}
@@ -1875,6 +1876,7 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;bac
   <div class="logo">
     <h1>\u{1F980} OpenClaw</h1>
     <p>Sign in to continue</p>
+    <p class=\"credit\">Make with ❤️ by Tino</p>
   </div>
   <div class="error" id="error"></div>
   <form id="loginForm">
