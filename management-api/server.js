@@ -1894,11 +1894,11 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;bac
     </div>
     <button type="submit" class="btn" id="submitBtn">Sign in</button>
   </form>
- 
-</div>
-<div class="copyright">
+ <div class="copyright">
   <p class="credit">Make with ❤️ by Tino</p>
 </div>
+</div>
+
 <script>
 const form = document.getElementById('loginForm');
 const errorEl = document.getElementById('error');
