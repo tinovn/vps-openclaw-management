@@ -166,6 +166,28 @@ function removeEnvValue(key) {
   writeEnvFile(env.trim() + '\n');
 }
 
+function getDomainFromCaddyfile() {
+  try {
+    const caddy = fs.readFileSync(CADDYFILE, 'utf8');
+    for (const rawLine of caddy.split('\n')) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+      const m = line.match(/^([^\s{][^{]*)\s*\{$/);
+      if (!m) continue;
+      const firstHost = m[1].split(',')[0].trim();
+      if (!firstHost || firstHost.startsWith('{$') || firstHost === 'localhost') return null;
+      return firstHost;
+    }
+  } catch {}
+  return null;
+}
+
+function getConfiguredDomainRaw() {
+  const envDomain = (getEnvValue('DOMAIN') || '').trim();
+  if (envDomain && envDomain !== 'localhost') return envDomain;
+  return getDomainFromCaddyfile();
+}
+
 // --- Config file helpers ---
 function readConfig() {
   return JSON.parse(fs.readFileSync(`${CONFIG_DIR}/openclaw.json`, 'utf8'));
@@ -653,15 +675,10 @@ const server = http.createServer(async (req, res) => {
       const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
       const serverIP = getServerIP();
       const { status } = getContainerStatus();
-
-      // Doc domain tu .env (Caddyfile dung env var {$DOMAIN:localhost})
-      let domain = null;
-      const envDomain = getEnvValue('DOMAIN') || '';
-      if (envDomain && envDomain !== 'localhost' && !envDomain.startsWith('http://')) {
-        domain = envDomain;
-      }
-
-      const host = domain || serverIP;
+      // Domain from .env; fallback to legacy Caddyfile when .env has no DOMAIN
+      const rawDomain = getConfiguredDomainRaw();
+      const domain = rawDomain && !/^https?:\/\//.test(rawDomain) ? rawDomain : null;
+      const host = rawDomain ? rawDomain.replace(/^https?:\/\//, '') : serverIP;
       const caddyTls = getEnvValue('CADDY_TLS') || '';
       // self-signed = http not applicable; empty CADDY_TLS with domain = Let's Encrypt = https
       const scheme = 'https';
@@ -732,9 +749,9 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'GET', '/api/domain')) {
     try {
-      const domain = getEnvValue('DOMAIN') || null;
+      const domain = getConfiguredDomainRaw() || null;
       const caddyTls = getEnvValue('CADDY_TLS') || '';
-      const isIP = domain && domain.startsWith('http://');
+      const isIP = domain && /^https?:\/\//.test(domain);
       const isDomain = domain && !isIP && domain !== 'localhost';
 
       return json(res, 200, {
