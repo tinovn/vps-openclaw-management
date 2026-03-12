@@ -1,5 +1,5 @@
 {$DOMAIN:localhost} {
-    tls {$TLS_MODE:internal}
+    {$CADDY_TLS:tls internal}
 
     # Session persistence: set cookie when token is in URL
     @has_token query token=*

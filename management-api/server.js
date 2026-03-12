@@ -589,20 +589,17 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'GET', '/api/domain')) {
     try {
-      let caddyfile = '';
-      try { caddyfile = fs.readFileSync(CADDYFILE, 'utf8'); } catch {}
-
-      const dm = caddyfile.match(/^(\S+)\s*\{/m);
-      const currentDomain = dm ? dm[1] : null;
-      const isEnvVar = currentDomain && currentDomain.startsWith('{');
+      const domain = getEnvValue('DOMAIN') || null;
+      const caddyTls = getEnvValue('CADDY_TLS') || '';
+      const isIP = domain && domain.startsWith('http://');
+      const isDomain = domain && !isIP && domain !== 'localhost';
 
       return json(res, 200, {
         ok: true,
-        domain: (isEnvVar || !currentDomain) ? null : currentDomain,
+        domain: isDomain ? domain : null,
         ip: getServerIP(),
-        ssl: caddyfile.includes('acme'),
-        selfSignedSSL: caddyfile.includes('tls internal') || caddyfile.includes('internal'),
-        caddyfile
+        ssl: isDomain && !caddyTls,  // real domain + no explicit TLS = auto Let's Encrypt
+        selfSignedSSL: caddyTls === 'tls internal',
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -637,32 +634,16 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: `DNS for ${domain} resolves to ${resolvedIPs.join(', ')} — does not match server IP (${serverIP}).` });
       }
 
-      // Write Caddyfile
-      const emailLine = email ? `{\n    email ${email}\n}\n\n` : '';
-      const sessionSnippet = `
-    # Session persistence: set cookie when token is in URL
-    @has_token query token=*
-    header @has_token Set-Cookie "oc_session=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000"
+      // Update .env with new domain (Caddy auto Let's Encrypt for real domains)
+      setEnvValue('DOMAIN', domain);
+      setEnvValue('CADDY_TLS', '');
 
-    # Redirect to token URL when cookie exists but token is missing
-    @needs_token {
-        not query token=*
-        header_regexp Cookie oc_session=1
-        path /
-        method GET
-    }
-    redir @needs_token /?token={$OPENCLAW_GATEWAY_TOKEN} 302\n`;
-      const caddyConfig = `${emailLine}${domain} {
-    tls {
-        issuer acme {
-            dir https://acme-v02.api.letsencrypt.org/directory
-        }
-    }
-${sessionSnippet}
-    reverse_proxy openclaw:18789
-}
-`;
-      fs.writeFileSync(CADDYFILE, caddyConfig, 'utf8');
+      // Download latest Caddyfile template from repo
+      try {
+        shell(`curl -fsSL 'https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main/Caddyfile?t=${Date.now()}' -o '${CADDYFILE}'`, 15000);
+      } catch (dlErr) {
+        return json(res, 500, { ok: false, error: 'Failed to download Caddyfile: ' + dlErr.message });
+      }
 
       // Restart Caddy container
       try {
@@ -675,9 +656,9 @@ ${sessionSnippet}
         }
       } catch {}
 
-      // Rollback
-      const fallback = `${serverIP} {\n    tls internal\n\n    @has_token query token=*\n    header @has_token Set-Cookie "oc_session=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000"\n\n    @needs_token {\n        not query token=*\n        header_regexp Cookie oc_session=1\n        path /\n        method GET\n    }\n    redir @needs_token /?token={$OPENCLAW_GATEWAY_TOKEN} 302\n\n    reverse_proxy openclaw:18789\n}\n`;
-      fs.writeFileSync(CADDYFILE, fallback, 'utf8');
+      // Rollback: revert domain to IP in .env
+      setEnvValue('DOMAIN', `http://${serverIP}`);
+      setEnvValue('CADDY_TLS', '');
       try { dockerCompose('restart caddy', 15000); } catch {}
       return json(res, 500, { ok: false, error: 'Caddy failed to start with this domain. Rolled back to IP config.' });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -1236,6 +1217,7 @@ ${sessionSnippet}
       const files = [
         { url: `${REPO_RAW}/management-api/server.js`, dest: `${MGMT_API_DIR}/server.js` },
         { url: `${REPO_RAW}/docker-compose.yml`, dest: `${COMPOSE_DIR}/docker-compose.yml` },
+        { url: `${REPO_RAW}/Caddyfile`, dest: `${COMPOSE_DIR}/Caddyfile` },
         ...configTemplates.map(t => ({ url: `${REPO_RAW}/config/${t}.json`, dest: `${TEMPLATES_DIR}/${t}.json` }))
       ];
 
@@ -1278,28 +1260,21 @@ ${sessionSnippet}
         if (migrated) writeConfig(liveConfig);
       } catch {}
 
-      // --- Migrate Caddyfile: add session persistence if missing ---
+      // --- Migrate .env: ensure DOMAIN is set (extract from old Caddyfile if needed) ---
       try {
-        let caddyContent = fs.readFileSync(CADDYFILE, 'utf8');
-        if (!caddyContent.includes('@has_token')) {
-          const snippet = `
-    # Session persistence: set cookie when token is in URL
-    @has_token query token=*
-    header @has_token Set-Cookie "oc_session=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000"
-
-    # Redirect to token URL when cookie exists but token is missing
-    @needs_token {
-        not query token=*
-        header_regexp Cookie oc_session=1
-        path /
-        method GET
-    }
-    redir @needs_token /?token={$OPENCLAW_GATEWAY_TOKEN} 302\n`;
-          caddyContent = caddyContent.replace(
-            /reverse_proxy openclaw:18789/g,
-            `${snippet.trim()}\n\n    reverse_proxy openclaw:18789`
-          );
-          fs.writeFileSync(CADDYFILE, caddyContent, 'utf8');
+        if (!getEnvValue('DOMAIN')) {
+          const oldCaddy = fs.readFileSync(CADDYFILE, 'utf8');
+          const dm = oldCaddy.match(/^(\S+)\s*\{/m);
+          if (dm && !dm[1].startsWith('{')) {
+            setEnvValue('DOMAIN', dm[1]);
+            // If old Caddyfile had acme/Let's Encrypt, CADDY_TLS should be empty
+            // If it had tls internal, set CADDY_TLS accordingly
+            if (oldCaddy.includes('tls internal')) {
+              setEnvValue('CADDY_TLS', 'tls internal');
+            } else {
+              setEnvValue('CADDY_TLS', '');
+            }
+          }
         }
       } catch {}
 

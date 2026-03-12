@@ -208,6 +208,18 @@ fi
 log "Tao file .env..."
 DROPLET_IP=$(hostname -I | awk '{print $1}')
 
+# Xac dinh Caddy TLS config dua tren domain
+if [ -n "${DOMAIN_ARG}" ] && [ "${DNS_READY}" = "true" ]; then
+    CADDY_DOMAIN="${DOMAIN_ARG}"
+    CADDY_TLS_VALUE=""  # Empty = Caddy auto Let's Encrypt for real domains
+elif [ -n "${DOMAIN_ARG}" ]; then
+    CADDY_DOMAIN="${DOMAIN_ARG}"
+    CADDY_TLS_VALUE="tls internal"
+else
+    CADDY_DOMAIN="http://${DROPLET_IP}"
+    CADDY_TLS_VALUE=""
+fi
+
 cat > ${INSTALL_DIR}/.env << EOF
 # OpenClaw Environment Configuration
 # Sau khi thay doi, restart: docker compose restart openclaw
@@ -218,6 +230,12 @@ OPENCLAW_VERSION=${APP_VERSION}
 # Gateway
 OPENCLAW_GATEWAY_PORT=18789
 OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN}
+
+# Domain & TLS (Caddy)
+# DOMAIN: ten mien hoac http://IP
+# CADDY_TLS: empty = auto Let's Encrypt, "tls internal" = self-signed
+DOMAIN=${CADDY_DOMAIN}
+CADDY_TLS=${CADDY_TLS_VALUE}
 
 # Management API
 OPENCLAW_MGMT_API_KEY=${MGMT_API_KEY}
@@ -262,64 +280,10 @@ log "Download docker-compose.yml..."
 curl -fsSL "${REPO_RAW}/docker-compose.yml" -o ${INSTALL_DIR}/docker-compose.yml
 
 # =============================================================================
-# 10. Tao Caddyfile
+# 10. Download Caddyfile template (dung env vars tu .env)
 # =============================================================================
-
-# Session persistence snippet: set cookie khi co token, redirect khi mat token
-CADDY_SESSION_SNIPPET='
-    # Session persistence: set cookie when token is in URL
-    @has_token query token=*
-    header @has_token Set-Cookie "oc_session=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000"
-
-    # Redirect to token URL when cookie exists but token is missing
-    @needs_token {
-        not query token=*
-        header_regexp Cookie oc_session=1
-        path /
-        method GET
-    }
-    redir @needs_token /?token={$OPENCLAW_GATEWAY_TOKEN} 302'
-
-if [ -n "${DOMAIN_ARG}" ] && [ "${DNS_READY}" = "true" ]; then
-    log "Tao Caddyfile voi domain ${DOMAIN_ARG} + Let's Encrypt SSL..."
-    cat > ${INSTALL_DIR}/Caddyfile << EOF
-${DOMAIN_ARG} {
-    tls {
-        issuer acme {
-            dir https://acme-v02.api.letsencrypt.org/directory
-        }
-    }
-${CADDY_SESSION_SNIPPET}
-
-    reverse_proxy openclaw:18789
-}
-EOF
-elif [ -n "${DOMAIN_ARG}" ]; then
-    log "Tao Caddyfile voi domain ${DOMAIN_ARG} (self-signed) + IP ${DROPLET_IP} (HTTP)..."
-    cat > ${INSTALL_DIR}/Caddyfile << EOF
-${DOMAIN_ARG} {
-    tls internal
-${CADDY_SESSION_SNIPPET}
-
-    reverse_proxy openclaw:18789
-}
-
-http://${DROPLET_IP} {
-${CADDY_SESSION_SNIPPET}
-
-    reverse_proxy openclaw:18789
-}
-EOF
-else
-    log "Tao Caddyfile voi IP ${DROPLET_IP} (HTTP)..."
-    cat > ${INSTALL_DIR}/Caddyfile << EOF
-http://${DROPLET_IP} {
-${CADDY_SESSION_SNIPPET}
-
-    reverse_proxy openclaw:18789
-}
-EOF
-fi
+log "Download Caddyfile template..."
+curl -fsSL "${REPO_RAW}/Caddyfile" -o ${INSTALL_DIR}/Caddyfile
 
 # =============================================================================
 # 11. Tao config templates + default config
