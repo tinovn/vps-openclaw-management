@@ -508,20 +508,17 @@ const server = http.createServer(async (req, res) => {
       const serverIP = getServerIP();
       const { status } = getContainerStatus();
 
-      // Doc domain tu Caddyfile
+      // Doc domain tu .env (Caddyfile dung env var {$DOMAIN:localhost})
       let domain = null;
-      try {
-        const caddyfile = fs.readFileSync(CADDYFILE, 'utf8');
-        const dm = caddyfile.match(/^(\S+)\s*\{/m);
-        if (dm && !/^\{/.test(dm[1]) && !/localhost/.test(dm[1])) domain = dm[1];
-      } catch {}
+      const envDomain = getEnvValue('DOMAIN') || '';
+      if (envDomain && envDomain !== 'localhost' && !envDomain.startsWith('http://')) {
+        domain = envDomain;
+      }
 
       const host = domain || serverIP;
-      // Xac dinh scheme: neu Caddyfile dung http:// cho host hoac khong co tls → http
-      let scheme = 'https';
-      let caddyContent = '';
-      try { caddyContent = fs.readFileSync(CADDYFILE, 'utf8'); } catch {}
-      if (caddyContent.includes(`http://${host}`)) scheme = 'http';
+      const caddyTls = getEnvValue('CADDY_TLS') || '';
+      // self-signed = http not applicable; empty CADDY_TLS with domain = Let's Encrypt = https
+      const scheme = 'https';
 
       // Kiem tra DNS domain da tro dung IP chua (dung Cloudflare DoH)
       let dnsStatus = null;
@@ -540,10 +537,10 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      // SSL status
-      const hasLetsEncrypt = caddyContent.includes('acme');
-      const hasSelfSigned = caddyContent.includes('tls internal');
-      const sslMode = hasLetsEncrypt ? 'letsencrypt' : hasSelfSigned ? 'self-signed' : 'none';
+      // SSL status (derived from .env)
+      const sslMode = domain
+        ? (caddyTls === 'tls internal' ? 'self-signed' : 'letsencrypt')
+        : 'none';
 
       return json(res, 200, {
         ok: true,

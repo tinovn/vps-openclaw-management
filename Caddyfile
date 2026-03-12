@@ -6,8 +6,10 @@
     header @has_token Set-Cookie "oc_session=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000"
 
     # Redirect to token URL when cookie exists but token is missing
+    # (exclude WebSocket upgrade — cannot follow 302)
     @needs_token {
         not query token=*
+        not header Connection *Upgrade*
         header_regexp Cookie oc_session=1
         path /
         method GET
