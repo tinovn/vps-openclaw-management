@@ -583,6 +583,12 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: 'Password must be at least 6 characters' });
       }
 
+      // Only allow 1 user — block if already exists
+      const existing = getLoginUser();
+      if (existing) {
+        return json(res, 409, { ok: false, error: `User '${existing}' already exists. Delete first or use change-password.` });
+      }
+
       const hashed = hashPassword(password);
       setEnvValue('OPENCLAW_LOGIN_USER', username);
       setEnvValue('OPENCLAW_LOGIN_PASS', hashed);
