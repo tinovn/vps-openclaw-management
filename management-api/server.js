@@ -305,6 +305,10 @@ function getBindings(config) {
   return Array.isArray(config.bindings) ? config.bindings : [];
 }
 
+// --- Provider aliases (e.g. "google" → "gemini") ---
+const PROVIDER_ALIASES = { google: 'gemini' };
+function resolveProvider(name) { return PROVIDER_ALIASES[name] || name; }
+
 // --- Provider configs ---
 // Helper: test API key via Bearer auth + GET /models endpoint
 function testBearerModels(url, apiKey) {
@@ -1015,7 +1019,8 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'PUT', '/api/config/provider')) {
     try {
       const body = await parseBody(req);
-      const { provider, model } = body;
+      const { provider: rawProvider, model } = body;
+      const provider = resolveProvider(rawProvider);
 
       const providerConfig = PROVIDERS[provider];
       if (!providerConfig) {
@@ -1076,7 +1081,8 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'PUT', '/api/config/api-key')) {
     try {
       const body = await parseBody(req);
-      const { provider, apiKey, agentId } = body;
+      const { provider: rawProvider, apiKey, agentId } = body;
+      const provider = resolveProvider(rawProvider);
 
       const providerConfig = PROVIDERS[provider];
       if (!providerConfig) return json(res, 400, { ok: false, error: 'Invalid provider' });
@@ -1105,7 +1111,8 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'DELETE', '/api/config/api-key')) {
     try {
       const body = await parseBody(req);
-      const { provider, agentId } = body;
+      const { provider: rawProvider, agentId } = body;
+      const provider = resolveProvider(rawProvider);
 
       const providerConfig = PROVIDERS[provider];
       if (!providerConfig) return json(res, 400, { ok: false, error: 'Invalid provider' });
@@ -1133,7 +1140,7 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/config/test-key')) {
     try {
       const body = await parseBody(req);
-      const provider = PROVIDERS[body.provider];
+      const provider = PROVIDERS[resolveProvider(body.provider)];
       if (!provider) return json(res, 400, { ok: false, error: 'Invalid provider' });
       const ok = provider.testFn(body.apiKey);
       return json(res, 200, { ok, error: ok ? null : 'API key invalid or expired' });
