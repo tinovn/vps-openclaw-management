@@ -1876,7 +1876,7 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;bac
   <div class="logo">
     <h1>\u{1F980} OpenClaw</h1>
     <p>Sign in to continue</p>
-    <p class=\"credit\">Make with ❤️ by Tino</p>
+    
   </div>
   <div class="error" id="error"></div>
   <form id="loginForm">
@@ -1890,6 +1890,7 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;bac
     </div>
     <button type="submit" class="btn" id="submitBtn">Sign in</button>
   </form>
+  <p class=\"credit\">Make with ❤️ by Tino</p>
 </div>
 <script>
 const form = document.getElementById('loginForm');
