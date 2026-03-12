@@ -1,4 +1,18 @@
 {$DOMAIN:localhost} {
     tls {$TLS_MODE:internal}
+
+    # Session persistence: set cookie when token is in URL
+    @has_token query token=*
+    header @has_token Set-Cookie "oc_session=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000"
+
+    # Redirect to token URL when cookie exists but token is missing
+    @needs_token {
+        not query token=*
+        header_regexp Cookie oc_session=1
+        path /
+        method GET
+    }
+    redir @needs_token /?token={$OPENCLAW_GATEWAY_TOKEN} 302
+
     reverse_proxy openclaw:18789
 }

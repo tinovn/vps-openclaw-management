@@ -639,12 +639,26 @@ const server = http.createServer(async (req, res) => {
 
       // Write Caddyfile
       const emailLine = email ? `{\n    email ${email}\n}\n\n` : '';
+      const sessionSnippet = `
+    # Session persistence: set cookie when token is in URL
+    @has_token query token=*
+    header @has_token Set-Cookie "oc_session=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000"
+
+    # Redirect to token URL when cookie exists but token is missing
+    @needs_token {
+        not query token=*
+        header_regexp Cookie oc_session=1
+        path /
+        method GET
+    }
+    redir @needs_token /?token={$OPENCLAW_GATEWAY_TOKEN} 302\n`;
       const caddyConfig = `${emailLine}${domain} {
     tls {
         issuer acme {
             dir https://acme-v02.api.letsencrypt.org/directory
         }
     }
+${sessionSnippet}
     reverse_proxy openclaw:18789
 }
 `;
@@ -662,7 +676,7 @@ const server = http.createServer(async (req, res) => {
       } catch {}
 
       // Rollback
-      const fallback = `${serverIP} {\n    tls internal\n    reverse_proxy openclaw:18789\n}\n`;
+      const fallback = `${serverIP} {\n    tls internal\n\n    @has_token query token=*\n    header @has_token Set-Cookie "oc_session=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000"\n\n    @needs_token {\n        not query token=*\n        header_regexp Cookie oc_session=1\n        path /\n        method GET\n    }\n    redir @needs_token /?token={$OPENCLAW_GATEWAY_TOKEN} 302\n\n    reverse_proxy openclaw:18789\n}\n`;
       fs.writeFileSync(CADDYFILE, fallback, 'utf8');
       try { dockerCompose('restart caddy', 15000); } catch {}
       return json(res, 500, { ok: false, error: 'Caddy failed to start with this domain. Rolled back to IP config.' });
@@ -1262,6 +1276,31 @@ const server = http.createServer(async (req, res) => {
           }
         }
         if (migrated) writeConfig(liveConfig);
+      } catch {}
+
+      // --- Migrate Caddyfile: add session persistence if missing ---
+      try {
+        let caddyContent = fs.readFileSync(CADDYFILE, 'utf8');
+        if (!caddyContent.includes('@has_token')) {
+          const snippet = `
+    # Session persistence: set cookie when token is in URL
+    @has_token query token=*
+    header @has_token Set-Cookie "oc_session=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000"
+
+    # Redirect to token URL when cookie exists but token is missing
+    @needs_token {
+        not query token=*
+        header_regexp Cookie oc_session=1
+        path /
+        method GET
+    }
+    redir @needs_token /?token={$OPENCLAW_GATEWAY_TOKEN} 302\n`;
+          caddyContent = caddyContent.replace(
+            /reverse_proxy openclaw:18789/g,
+            `${snippet.trim()}\n\n    reverse_proxy openclaw:18789`
+          );
+          fs.writeFileSync(CADDYFILE, caddyContent, 'utf8');
+        }
       } catch {}
 
       // Apply docker-compose changes + always restart openclaw container
