@@ -546,7 +546,7 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         domain: domain,
         ip: serverIP,
-        dashboardUrl: `${scheme}://${host}?token=${token}`,
+        dashboardUrl: `${scheme}://${host}/#token=${token}`,
         gatewayToken: token,
         mgmtApiKey: sanitizeKey(getMgmtApiKey()),
         status,
