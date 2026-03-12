@@ -1118,6 +1118,19 @@ const server = http.createServer(async (req, res) => {
       }
 
       setEnvValue(key, body.value);
+
+      // Sync gateway token to openclaw.json + recreate Caddy (env_file only read on create)
+      if (key === 'OPENCLAW_GATEWAY_TOKEN') {
+        try {
+          let config = readConfig();
+          if (!config.gateway) config.gateway = {};
+          if (!config.gateway.auth) config.gateway.auth = {};
+          config.gateway.auth.token = body.value;
+          writeConfig(config);
+        } catch {}
+        dockerCompose('up -d --force-recreate caddy', 60000);
+      }
+
       restartContainer('openclaw');
       return json(res, 200, { ok: true, key, applied: true });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
