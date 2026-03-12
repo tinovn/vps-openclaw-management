@@ -20,6 +20,33 @@ const TEMPLATES_DIR = '/etc/openclaw/config';
 const AUTH_PROFILES_DIR = `${CONFIG_DIR}/agents/main/agent`;
 const AUTH_PROFILES_FILE = `${AUTH_PROFILES_DIR}/auth-profiles.json`;
 
+// --- Login user credentials (stored in .env) ---
+const SCRYPT_KEYLEN = 64;
+const SCRYPT_COST = { N: 16384, r: 8, p: 1 };
+
+function hashPassword(password, salt) {
+  if (!salt) salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, SCRYPT_KEYLEN, SCRYPT_COST).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  if (!stored || !stored.includes(':')) return false;
+  const [salt, hash] = stored.split(':');
+  const test = crypto.scryptSync(password, salt, SCRYPT_KEYLEN, SCRYPT_COST).toString('hex');
+  if (test.length !== hash.length) return false;
+  try { return crypto.timingSafeEqual(Buffer.from(test), Buffer.from(hash)); }
+  catch { return false; }
+}
+
+function getLoginUser() {
+  return getEnvValue('OPENCLAW_LOGIN_USER');
+}
+
+function getLoginPass() {
+  return getEnvValue('OPENCLAW_LOGIN_PASS');
+}
+
 const MAX_AUTH_FAILURES = 10;
 const BLOCK_DURATION = 15 * 60 * 1000;
 const authAttempts = {};
@@ -491,6 +518,46 @@ const server = http.createServer(async (req, res) => {
     return json(res, 429, { ok: false, error: 'Too many failed attempts. Blocked for 15 minutes.' });
   }
 
+  // =========================================================================
+  // PUBLIC ROUTES (no Bearer auth required)
+  // =========================================================================
+
+  // GET /login — Serve login page
+  if (route(req, 'GET', '/login')) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(LOGIN_HTML);
+  }
+
+  // POST /api/auth/login — Validate credentials, return gateway token
+  if (route(req, 'POST', '/api/auth/login')) {
+    try {
+      const body = await parseBody(req);
+      const { username, password } = body;
+      if (!username || !password) {
+        return json(res, 400, { ok: false, error: 'Missing username or password' });
+      }
+
+      const storedUser = getLoginUser();
+      const storedPass = getLoginPass();
+
+      if (!storedUser || !storedPass) {
+        return json(res, 503, { ok: false, error: 'Login not configured. Ask admin to create credentials via API.' });
+      }
+
+      if (username !== storedUser || !verifyPassword(password, storedPass)) {
+        recordFailedAuth(ip);
+        return json(res, 401, { ok: false, error: 'Invalid username or password' });
+      }
+
+      const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
+      return json(res, 200, { ok: true, token });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // PROTECTED ROUTES (Bearer auth required)
+  // =========================================================================
+
   // Auth
   if (!isAuthorized(req)) {
     recordFailedAuth(ip);
@@ -498,6 +565,79 @@ const server = http.createServer(async (req, res) => {
   }
 
   let m;
+
+  // =========================================================================
+  // POST /api/auth/create-user — Tao login credentials (luu vao .env)
+  // =========================================================================
+  if (route(req, 'POST', '/api/auth/create-user')) {
+    try {
+      const body = await parseBody(req);
+      const { username, password } = body;
+      if (!username || !password) {
+        return json(res, 400, { ok: false, error: 'Missing username or password' });
+      }
+      if (username.length < 3 || username.length > 64) {
+        return json(res, 400, { ok: false, error: 'Username must be 3-64 characters' });
+      }
+      if (password.length < 6) {
+        return json(res, 400, { ok: false, error: 'Password must be at least 6 characters' });
+      }
+
+      const hashed = hashPassword(password);
+      setEnvValue('OPENCLAW_LOGIN_USER', username);
+      setEnvValue('OPENCLAW_LOGIN_PASS', hashed);
+
+      return json(res, 200, { ok: true, username, message: 'Login credentials saved.' });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // DELETE /api/auth/user — Xoa login credentials
+  // =========================================================================
+  if (route(req, 'DELETE', '/api/auth/user')) {
+    try {
+      removeEnvValue('OPENCLAW_LOGIN_USER');
+      removeEnvValue('OPENCLAW_LOGIN_PASS');
+      return json(res, 200, { ok: true, message: 'Login credentials removed.' });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/auth/user — Xem login user hien tai
+  // =========================================================================
+  if (route(req, 'GET', '/api/auth/user')) {
+    try {
+      const username = getLoginUser();
+      return json(res, 200, {
+        ok: true,
+        configured: !!username,
+        username: username || null
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // PUT /api/auth/change-password — Doi password
+  // =========================================================================
+  if (route(req, 'PUT', '/api/auth/change-password')) {
+    try {
+      const body = await parseBody(req);
+      const { password } = body;
+      if (!password || password.length < 6) {
+        return json(res, 400, { ok: false, error: 'Password must be at least 6 characters' });
+      }
+
+      const username = getLoginUser();
+      if (!username) {
+        return json(res, 400, { ok: false, error: 'No login user configured. Use POST /api/auth/create-user first.' });
+      }
+
+      const hashed = hashPassword(password);
+      setEnvValue('OPENCLAW_LOGIN_PASS', hashed);
+
+      return json(res, 200, { ok: true, username, message: 'Password changed.' });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
 
   // =========================================================================
   // GET /api/info — Thong tin service (tuong tu "Thong tin dang nhap" N8N)
@@ -1678,6 +1818,93 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   json(res, 404, { ok: false, error: 'Not found' });
 });
+
+// =============================================================================
+// Login HTML Page
+// =============================================================================
+const LOGIN_HTML = `<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenClaw Login</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#e2e8f0}
+.card{background:#1e293b;border-radius:16px;padding:40px;width:100%;max-width:400px;box-shadow:0 25px 50px rgba(0,0,0,.4)}
+.logo{text-align:center;margin-bottom:32px}
+.logo h1{font-size:24px;font-weight:700;color:#f8fafc}
+.logo p{font-size:14px;color:#94a3b8;margin-top:4px}
+.form-group{margin-bottom:20px}
+.form-group label{display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px}
+.form-group input{width:100%;padding:12px 16px;background:#0f172a;border:1px solid #334155;border-radius:10px;color:#f8fafc;font-size:15px;outline:none;transition:border-color .2s}
+.form-group input:focus{border-color:#3b82f6}
+.btn{width:100%;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s}
+.btn:hover{background:#2563eb}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.error{background:#7f1d1d;color:#fca5a5;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <h1>\u{1F980} OpenClaw</h1>
+    <p>Sign in to continue</p>
+  </div>
+  <div class="error" id="error"></div>
+  <form id="loginForm">
+    <div class="form-group">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="btn" id="submitBtn">Sign in</button>
+  </form>
+</div>
+<script>
+const form = document.getElementById('loginForm');
+const errorEl = document.getElementById('error');
+const btn = document.getElementById('submitBtn');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errorEl.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Signing in...';
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value
+      })
+    });
+    const data = await res.json();
+
+    if (data.ok && data.token) {
+      window.location.href = '/#token=' + data.token;
+    } else {
+      errorEl.textContent = data.error || 'Login failed';
+      errorEl.style.display = 'block';
+    }
+  } catch (err) {
+    errorEl.textContent = 'Connection error. Please try again.';
+    errorEl.style.display = 'block';
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Sign in';
+});
+</script>
+</body>
+</html>`;
 
 // --- Startup migration: ensure NODE_OPTIONS in .env (80% of system RAM) ---
 try {

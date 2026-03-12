@@ -182,6 +182,27 @@ curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" 
 
 API ghi cấu hình kênh trực tiếp vào `openclaw.json` với `enabled: true`, `dmPolicy: "open"`, và `allowFrom: ["*"]`. Plugin cho Zalo/Discord/Slack được tự động bật.
 
+### Đăng nhập người dùng
+
+| Phương thức | Endpoint | Mô tả |
+|-------------|----------|-------|
+| `GET` | `/login` | Trang đăng nhập (công khai) |
+| `POST` | `/api/auth/login` | Đăng nhập (công khai) — trả về gateway token |
+| `POST` | `/api/auth/create-user` | Tạo tài khoản đăng nhập (yêu cầu Bearer auth) |
+| `GET` | `/api/auth/user` | Xem tài khoản hiện tại (yêu cầu Bearer auth) |
+| `PUT` | `/api/auth/change-password` | Đổi mật khẩu (yêu cầu Bearer auth) |
+| `DELETE` | `/api/auth/user` | Xoá tài khoản đăng nhập (yêu cầu Bearer auth) |
+
+**Tạo tài khoản (chỉ admin):**
+
+```bash
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"your_password"}' \
+  http://localhost:9998/api/auth/create-user
+```
+
+Sau khi tạo, người dùng truy cập `https://domain/login` để đăng nhập. Hệ thống xác thực credentials rồi redirect vào OpenClaw với gateway token.
+
 ### Biến môi trường
 
 | Phương thức | Endpoint | Mô tả |

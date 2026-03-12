@@ -31,6 +31,8 @@ services:
       - caddy_config:/config
     env_file:
       - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - openclaw
 

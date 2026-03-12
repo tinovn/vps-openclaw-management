@@ -1,14 +1,13 @@
 {$DOMAIN:localhost} {
     {$CADDY_TLS:tls internal}
 
-    # Auto-inject gateway token via hash fragment for new tabs
-    @needs_token {
-        not query token=*
-        not header Connection *Upgrade*
-        path /
-        method GET
+    # Login page + auth API -> Management API on host
+    handle /login {
+        reverse_proxy host.docker.internal:9998
     }
-    redir @needs_token /#token={$OPENCLAW_GATEWAY_TOKEN} 302
+    handle /api/auth/* {
+        reverse_proxy host.docker.internal:9998
+    }
 
     reverse_proxy openclaw:18789
 }

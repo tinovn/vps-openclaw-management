@@ -127,6 +127,23 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 | `GET` | `/api/agents/:id/api-key` | Xem masked API keys cua agent |
 | `PUT` | `/api/agents/:id/api-key` | Set API key cho agent |
 
+#### User Login / Authentication
+
+| Method | Path | Mo ta |
+|--------|------|-------|
+| `GET` | `/login` | Serve login page (public, no auth) |
+| `POST` | `/api/auth/login` | Login (public) — tra ve gateway token |
+| `POST` | `/api/auth/create-user` | Tao login user (protected) — luu vao .env |
+| `GET` | `/api/auth/user` | Xem login user hien tai (protected) |
+| `PUT` | `/api/auth/change-password` | Doi password (protected) |
+| `DELETE` | `/api/auth/user` | Xoa login credentials (protected) |
+
+Login credentials luu trong `.env`:
+- `OPENCLAW_LOGIN_USER` — username
+- `OPENCLAW_LOGIN_PASS` — scrypt hash (salt:hash)
+
+Flow: User truy cap `domain/login` → nhap username/password → POST `/api/auth/login` → nhan gateway token → redirect `/#token=...`
+
 #### Routing Bindings
 
 | Method | Path | Mo ta |
