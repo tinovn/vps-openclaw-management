@@ -332,7 +332,10 @@ function getBindings(config) {
 
 // --- Provider aliases (e.g. "google" → "gemini") ---
 const PROVIDER_ALIASES = { google: 'gemini' };
+// Reverse map: PROVIDERS key → model prefix (e.g. "gemini" → "google")
+const MODEL_PREFIX_MAP = { gemini: 'google' };
 function resolveProvider(name) { return PROVIDER_ALIASES[name] || name; }
+function resolveModelPrefix(provider) { return MODEL_PREFIX_MAP[provider] || provider; }
 
 // --- Provider configs ---
 // Helper: test API key via Bearer auth + GET /models endpoint
@@ -1203,7 +1206,14 @@ const server = http.createServer(async (req, res) => {
 
       // Update model from template or body
       if (!config.agents) config.agents = template.agents;
-      config.agents.defaults.model.primary = model || template.agents.defaults.model.primary;
+      // Normalize model prefix (e.g. gemini/model → google/model)
+      let finalModel = model || template.agents.defaults.model.primary;
+      if (finalModel && finalModel.includes('/')) {
+        const [prefix, ...rest] = finalModel.split('/');
+        const correctPrefix = resolveModelPrefix(resolveProvider(prefix));
+        finalModel = `${correctPrefix}/${rest.join('/')}`;
+      }
+      config.agents.defaults.model.primary = finalModel;
 
       // Merge gateway: keep existing settings, ensure auth token is correct
       config.gateway = { ...template.gateway, ...(config.gateway || {}) };
