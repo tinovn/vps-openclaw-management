@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.5';
+const MGMT_VERSION = '1.0.6';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -1249,30 +1249,13 @@ const server = http.createServer(async (req, res) => {
       // Preserve browser from template if not set
       if (!config.browser) config.browser = template.browser;
 
-      // Copy models section from template (e.g. custom baseUrl for chatgpt proxy)
+      // Copy models section from template
+      // Custom providers are stored in template files, no need to preserve in active config
       if (template.models) {
         config.models = template.models;
       } else {
         delete config.models;
       }
-
-      // Restore custom providers from template files
-      try {
-        const tplFiles = fs.readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.json'));
-        for (const file of tplFiles) {
-          const name = file.replace('.json', '');
-          if (PROVIDERS[name] || PROVIDERS[resolveProvider(name)]) continue;
-          try {
-            const cTpl = JSON.parse(fs.readFileSync(`${TEMPLATES_DIR}/${file}`, 'utf8'));
-            if (cTpl.models?.providers) {
-              if (!config.models) config.models = { mode: 'merge', providers: {} };
-              if (!config.models.providers) config.models.providers = {};
-              config.models.mode = 'merge';
-              Object.assign(config.models.providers, cTpl.models.providers);
-            }
-          } catch {}
-        }
-      } catch {}
 
       // Write auth-profiles.json if there's an API key in env for this provider
       const authProvider = providerConfig.authProfileProvider;
