@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.4';
+const MGMT_VERSION = '1.0.5';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -1080,25 +1080,35 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      // Custom providers
-      const customProviders = config.models?.providers || {};
-      for (const [name, p] of Object.entries(customProviders)) {
-        if (PROVIDERS[name] || PROVIDERS[resolveProvider(name)]) continue;
-        const envKey = `CUSTOM_${name.toUpperCase().replace(/-/g, '_')}_API_KEY`;
-        const envVal = getEnvValue(envKey);
-        const profileVal = getAuthProfileApiKey(name);
-        const val = envVal || profileVal;
-        providers.push({
-          id: name,
-          name: name,
-          type: 'custom',
-          active: currentProvider === name,
-          baseUrl: p.baseUrl,
-          api: p.api,
-          models: p.models || [],
-          apiKey: val ? sanitizeKey(val) : null
-        });
-      }
+      // Custom providers (from template files)
+      try {
+        const files = fs.readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.json'));
+        for (const file of files) {
+          const name = file.replace('.json', '');
+          if (PROVIDERS[name] || PROVIDERS[resolveProvider(name)]) continue;
+          try {
+            const tpl = JSON.parse(fs.readFileSync(`${TEMPLATES_DIR}/${file}`, 'utf8'));
+            const provKey = Object.keys(tpl.models?.providers || {})[0];
+            if (!provKey) continue;
+            const p = tpl.models.providers[provKey];
+            const envKey = `CUSTOM_${name.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+            const envVal = getEnvValue(envKey);
+            const profileVal = getAuthProfileApiKey(name);
+            const val = envVal || profileVal;
+            providers.push({
+              id: name,
+              name: name,
+              type: 'custom',
+              active: currentProvider === name,
+              defaultModel: tpl.agents?.defaults?.model?.primary || null,
+              baseUrl: p.baseUrl,
+              api: p.api,
+              models: p.models || [],
+              apiKey: val ? sanitizeKey(val) : null
+            });
+          } catch {}
+        }
+      } catch {}
 
       return json(res, 200, { ok: true, activeModel: currentModel, providers });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -1121,16 +1131,19 @@ const server = http.createServer(async (req, res) => {
         apiKeys[id] = val ? sanitizeKey(val) : null;
       }
 
-      // Include custom providers
-      const customProviders = config.models?.providers || {};
-      for (const [name, p] of Object.entries(customProviders)) {
-        if (PROVIDERS[name] || PROVIDERS[resolveProvider(name)]) continue;
-        const envKey = `CUSTOM_${name.toUpperCase().replace(/-/g, '_')}_API_KEY`;
-        const envVal = getEnvValue(envKey);
-        const profileVal = getAuthProfileApiKey(name);
-        const val = envVal || profileVal;
-        apiKeys[name] = val ? sanitizeKey(val) : null;
-      }
+      // Include custom providers (from template files)
+      try {
+        const files = fs.readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.json'));
+        for (const file of files) {
+          const name = file.replace('.json', '');
+          if (PROVIDERS[name] || PROVIDERS[resolveProvider(name)]) continue;
+          const envKey = `CUSTOM_${name.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+          const envVal = getEnvValue(envKey);
+          const profileVal = getAuthProfileApiKey(name);
+          const val = envVal || profileVal;
+          apiKeys[name] = val ? sanitizeKey(val) : null;
+        }
+      } catch {}
 
       const agentsList = getAgentsList(config);
 
@@ -1165,26 +1178,43 @@ const server = http.createServer(async (req, res) => {
 
       const providerConfig = PROVIDERS[provider];
 
-      // Check if it's a custom provider
+      // Check if it's a custom provider (from template file)
       let config;
       try { config = readConfig(); } catch { config = {}; }
-      const customProvider = config.models?.providers?.[provider];
+      const customTplPath = `${TEMPLATES_DIR}/${provider}.json`;
+      const hasCustomTemplate = !providerConfig && fs.existsSync(customTplPath);
 
-      if (!providerConfig && !customProvider) {
-        // List available: built-in + custom
-        const customNames = Object.keys(config.models?.providers || {}).filter(n => !PROVIDERS[n] && !PROVIDERS[resolveProvider(n)]);
+      if (!providerConfig && !hasCustomTemplate) {
+        // List available: built-in + custom from template files
+        let customNames = [];
+        try {
+          customNames = fs.readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.json')).map(f => f.replace('.json', '')).filter(n => !PROVIDERS[n] && !PROVIDERS[resolveProvider(n)]);
+        } catch {}
         const all = [...Object.keys(PROVIDERS), ...customNames];
         return json(res, 400, { ok: false, error: 'Invalid provider. Use: ' + all.join(', ') });
       }
 
-      // --- Custom provider: just switch model ---
-      if (!providerConfig && customProvider) {
+      // --- Custom provider: load template and switch ---
+      if (!providerConfig && hasCustomTemplate) {
         if (!model) return json(res, 400, { ok: false, error: 'Missing model. Use format: provider/model-id' });
 
-        if (!config.agents) config.agents = { defaults: { model: {} } };
-        if (!config.agents.defaults) config.agents.defaults = { model: {} };
-        if (!config.agents.defaults.model) config.agents.defaults.model = {};
+        const customTpl = JSON.parse(fs.readFileSync(customTplPath, 'utf8'));
+        const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
+
+        config.agents = customTpl.agents || config.agents;
         config.agents.defaults.model.primary = model.includes('/') ? model : `${provider}/${model}`;
+
+        // Merge custom provider's models.providers into active config
+        if (customTpl.models?.providers) {
+          if (!config.models) config.models = { mode: 'merge', providers: {} };
+          if (!config.models.providers) config.models.providers = {};
+          config.models.mode = 'merge';
+          Object.assign(config.models.providers, customTpl.models.providers);
+        }
+
+        config.gateway = { ...(customTpl.gateway || {}), ...(config.gateway || {}) };
+        config.gateway.auth = { token };
+        if (!config.browser) config.browser = customTpl.browser;
 
         writeConfig(config);
         restartContainer('openclaw');
@@ -1220,28 +1250,29 @@ const server = http.createServer(async (req, res) => {
       if (!config.browser) config.browser = template.browser;
 
       // Copy models section from template (e.g. custom baseUrl for chatgpt proxy)
-      // Remove it when switching to a provider that doesn't need it
-      // But preserve existing custom providers
-      const existingCustom = {};
-      if (config.models?.providers) {
-        for (const [name, p] of Object.entries(config.models.providers)) {
-          if (!PROVIDERS[name] && !PROVIDERS[resolveProvider(name)]) existingCustom[name] = p;
-        }
-      }
-
       if (template.models) {
         config.models = template.models;
       } else {
         delete config.models;
       }
 
-      // Restore custom providers
-      if (Object.keys(existingCustom).length > 0) {
-        if (!config.models) config.models = { mode: 'merge', providers: {} };
-        if (!config.models.providers) config.models.providers = {};
-        config.models.mode = 'merge';
-        Object.assign(config.models.providers, existingCustom);
-      }
+      // Restore custom providers from template files
+      try {
+        const tplFiles = fs.readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.json'));
+        for (const file of tplFiles) {
+          const name = file.replace('.json', '');
+          if (PROVIDERS[name] || PROVIDERS[resolveProvider(name)]) continue;
+          try {
+            const cTpl = JSON.parse(fs.readFileSync(`${TEMPLATES_DIR}/${file}`, 'utf8'));
+            if (cTpl.models?.providers) {
+              if (!config.models) config.models = { mode: 'merge', providers: {} };
+              if (!config.models.providers) config.models.providers = {};
+              config.models.mode = 'merge';
+              Object.assign(config.models.providers, cTpl.models.providers);
+            }
+          } catch {}
+        }
+      } catch {}
 
       // Write auth-profiles.json if there's an API key in env for this provider
       const authProvider = providerConfig.authProfileProvider;
@@ -1330,7 +1361,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // POST /api/config/custom-provider — Tao custom provider moi
+  // POST /api/config/custom-provider — Tao custom provider moi (tao template file)
   // =========================================================================
   if (route(req, 'POST', '/api/config/custom-provider')) {
     try {
@@ -1341,7 +1372,6 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: 'Missing required fields: baseUrl, model, apiKey' });
       }
 
-      // Parse provider/model-id
       const parts = model.split('/');
       if (parts.length < 2) {
         return json(res, 400, { ok: false, error: 'Model must be in format "provider/model-id"' });
@@ -1353,7 +1383,6 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: 'Invalid provider name. Use lowercase letters, numbers, hyphens.' });
       }
 
-      // Block built-in providers
       if (PROVIDERS[providerName] || PROVIDERS[resolveProvider(providerName)]) {
         return json(res, 400, { ok: false, error: `"${providerName}" is a built-in provider. Use PUT /api/config/provider instead.` });
       }
@@ -1362,46 +1391,52 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: 'Invalid baseUrl' });
       }
 
-      let config;
-      try { config = readConfig(); } catch { config = {}; }
-
-      // Ensure models section
-      if (!config.models) config.models = { mode: 'merge', providers: {} };
-      if (!config.models.providers) config.models.providers = {};
-      config.models.mode = 'merge';
-
       const envKey = `CUSTOM_${providerName.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+      const tplPath = `${TEMPLATES_DIR}/${providerName}.json`;
 
-      // Add or update provider
-      const existing = config.models.providers[providerName];
-      if (existing) {
-        existing.baseUrl = baseUrl;
-        if (api) existing.api = api;
-        const models = existing.models || [];
-        if (!models.find(m => m.id === modelId)) {
-          models.push({ id: modelId, name: modelName || modelId });
-          existing.models = models;
-        }
-      } else {
-        config.models.providers[providerName] = {
+      // Create or update template file
+      let tpl = {};
+      try { tpl = JSON.parse(fs.readFileSync(tplPath, 'utf8')); } catch {}
+
+      // Build template like built-in config
+      tpl.agents = { defaults: { model: { primary: model }, maxConcurrent: 4, subagents: { maxConcurrent: 8 } } };
+      if (!tpl.models) tpl.models = { mode: 'merge', providers: {} };
+      tpl.models.mode = 'merge';
+      if (!tpl.models.providers[providerName]) {
+        tpl.models.providers[providerName] = {
           baseUrl,
           apiKey: `\${${envKey}}`,
           api: api || 'openai-completions',
           models: [{ id: modelId, name: modelName || modelId }]
         };
+      } else {
+        const p = tpl.models.providers[providerName];
+        p.baseUrl = baseUrl;
+        if (api) p.api = api;
+        if (!p.models) p.models = [];
+        if (!p.models.find(m => m.id === modelId)) {
+          p.models.push({ id: modelId, name: modelName || modelId });
+        }
       }
+      tpl.gateway = { mode: 'local', bind: 'lan', auth: { token: '${OPENCLAW_GATEWAY_TOKEN}' }, trustedProxies: ['172.16.0.0/12', '10.0.0.0/8', '192.168.0.0/16'], controlUi: { enabled: true, allowInsecureAuth: true, dangerouslyAllowHostHeaderOriginFallback: true, dangerouslyDisableDeviceAuth: true } };
+      tpl.browser = { headless: true, defaultProfile: 'openclaw', noSandbox: true };
 
-      // Set as primary model
-      if (!config.agents) config.agents = { defaults: { model: {} } };
-      if (!config.agents.defaults) config.agents.defaults = { model: {} };
-      if (!config.agents.defaults.model) config.agents.defaults.model = {};
-      config.agents.defaults.model.primary = model;
-
-      writeConfig(config);
+      fs.writeFileSync(tplPath, JSON.stringify(tpl, null, 2), 'utf8');
 
       // Save API key
       setEnvValue(envKey, apiKey);
       setAuthProfileApiKey(providerName, apiKey);
+
+      // Switch to this provider (load template into active config)
+      const config = readConfig();
+      const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
+      config.agents = tpl.agents;
+      config.models = JSON.parse(JSON.stringify(tpl.models));
+      config.models.providers[providerName].apiKey = `\${${envKey}}`;
+      config.gateway = { ...tpl.gateway, ...(config.gateway || {}) };
+      config.gateway.auth = { token };
+      if (!config.browser) config.browser = tpl.browser;
+      writeConfig(config);
 
       restartContainer('openclaw');
 
@@ -1410,31 +1445,32 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // GET /api/config/custom-providers — List custom providers
+  // GET /api/config/custom-providers — List custom providers (from template files)
   // =========================================================================
   if (route(req, 'GET', '/api/config/custom-providers')) {
     try {
-      let config;
-      try { config = readConfig(); } catch { config = {}; }
-
       const customProviders = {};
-      const providers = config.models?.providers || {};
-      for (const [name, p] of Object.entries(providers)) {
+      const files = fs.readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.json'));
+      for (const file of files) {
+        const name = file.replace('.json', '');
         if (PROVIDERS[name] || PROVIDERS[resolveProvider(name)]) continue;
-
-        const envKey = `CUSTOM_${name.toUpperCase().replace(/-/g, '_')}_API_KEY`;
-        const envVal = getEnvValue(envKey);
-        const profileVal = getAuthProfileApiKey(name);
-        const keyVal = envVal || profileVal;
-
-        customProviders[name] = {
-          baseUrl: p.baseUrl,
-          api: p.api,
-          models: p.models || [],
-          apiKey: keyVal ? sanitizeKey(keyVal) : null
-        };
+        try {
+          const tpl = JSON.parse(fs.readFileSync(`${TEMPLATES_DIR}/${file}`, 'utf8'));
+          const provKey = Object.keys(tpl.models?.providers || {})[0];
+          if (!provKey) continue;
+          const p = tpl.models.providers[provKey];
+          const envKey = `CUSTOM_${name.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+          const keyVal = getEnvValue(envKey) || getAuthProfileApiKey(name);
+          customProviders[name] = {
+            baseUrl: p.baseUrl,
+            api: p.api,
+            models: p.models || [],
+            apiKey: keyVal ? sanitizeKey(keyVal) : null
+          };
+        } catch {}
       }
 
+      const config = readConfig();
       const currentModel = config.agents?.defaults?.model?.primary || '';
       const currentProvider = currentModel.split('/')[0];
 
@@ -1443,7 +1479,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // PUT /api/config/custom-provider/:provider — Update custom provider
+  // PUT /api/config/custom-provider/:provider — Update custom provider (template file)
   // =========================================================================
   if ((m = route(req, 'PUT', '/api/config/custom-provider/:provider'))) {
     try {
@@ -1454,14 +1490,15 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: `"${providerName}" is a built-in provider.` });
       }
 
-      let config;
-      try { config = readConfig(); } catch { config = {}; }
-
-      if (!config.models?.providers?.[providerName]) {
+      const tplPath = `${TEMPLATES_DIR}/${providerName}.json`;
+      let tpl;
+      try { tpl = JSON.parse(fs.readFileSync(tplPath, 'utf8')); } catch {
         return json(res, 404, { ok: false, error: `Custom provider "${providerName}" not found` });
       }
 
-      const p = config.models.providers[providerName];
+      const provKey = Object.keys(tpl.models?.providers || {})[0];
+      if (!provKey) return json(res, 404, { ok: false, error: `Custom provider "${providerName}" has no config` });
+      const p = tpl.models.providers[provKey];
 
       if (body.baseUrl) {
         try { new URL(body.baseUrl); } catch {
@@ -1471,7 +1508,6 @@ const server = http.createServer(async (req, res) => {
       }
       if (body.api) p.api = body.api;
 
-      // Add model if provided
       if (body.model) {
         const modelId = body.model.includes('/') ? body.model.split('/').slice(1).join('/') : body.model;
         if (!p.models) p.models = [];
@@ -1480,15 +1516,23 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      // Update API key if provided
       if (body.apiKey) {
         const envKey = `CUSTOM_${providerName.toUpperCase().replace(/-/g, '_')}_API_KEY`;
         setEnvValue(envKey, body.apiKey);
         setAuthProfileApiKey(providerName, body.apiKey);
       }
 
-      writeConfig(config);
-      restartContainer('openclaw');
+      fs.writeFileSync(tplPath, JSON.stringify(tpl, null, 2), 'utf8');
+
+      // Also update active config if this provider is currently in use
+      try {
+        const config = readConfig();
+        if (config.models?.providers?.[providerName]) {
+          config.models.providers[providerName] = { ...p };
+          writeConfig(config);
+          restartContainer('openclaw');
+        }
+      } catch {}
 
       return json(res, 200, { ok: true, provider: providerName, config: { baseUrl: p.baseUrl, api: p.api, models: p.models } });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -1505,18 +1549,24 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: `"${providerName}" is a built-in provider. Cannot delete.` });
       }
 
-      let config;
-      try { config = readConfig(); } catch { config = {}; }
-
-      if (!config.models?.providers?.[providerName]) {
+      // Check template file exists
+      const tplPath = `${TEMPLATES_DIR}/${providerName}.json`;
+      if (!fs.existsSync(tplPath)) {
         return json(res, 404, { ok: false, error: `Custom provider "${providerName}" not found` });
       }
 
-      delete config.models.providers[providerName];
+      // Delete template file
+      fs.unlinkSync(tplPath);
 
-      // Clean up empty models section
-      if (Object.keys(config.models.providers).length === 0) {
-        delete config.models;
+      // Remove from active config if present
+      let config;
+      try { config = readConfig(); } catch { config = {}; }
+
+      if (config.models?.providers?.[providerName]) {
+        delete config.models.providers[providerName];
+        if (Object.keys(config.models.providers).length === 0) {
+          delete config.models;
+        }
       }
 
       // If current model uses this provider, fallback to anthropic
@@ -1577,17 +1627,28 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true, provider: resolved, model: { id: modelId, name: modelName || modelId } });
       }
 
-      // For custom providers: add to models.providers.<name>.models
-      const customProv = config.models?.providers?.[providerName];
-      if (!customProv) {
+      // For custom providers: add to template file
+      const customTplPath = `${TEMPLATES_DIR}/${providerName}.json`;
+      if (!fs.existsSync(customTplPath)) {
         return json(res, 404, { ok: false, error: `Provider "${providerName}" not found` });
       }
+      const customTpl = JSON.parse(fs.readFileSync(customTplPath, 'utf8'));
+      const provKey = Object.keys(customTpl.models?.providers || {})[0];
+      if (!provKey) return json(res, 404, { ok: false, error: `Provider "${providerName}" has no config` });
+      const customProv = customTpl.models.providers[provKey];
       if (!customProv.models) customProv.models = [];
       if (customProv.models.find(m => m.id === modelId)) {
         return json(res, 409, { ok: false, error: `Model "${modelId}" already exists` });
       }
       customProv.models.push({ id: modelId, name: modelName || modelId });
-      writeConfig(config);
+      fs.writeFileSync(customTplPath, JSON.stringify(customTpl, null, 2), 'utf8');
+
+      // Also update active config if provider is in use
+      if (config.models?.providers?.[providerName]) {
+        if (!config.models.providers[providerName].models) config.models.providers[providerName].models = [];
+        config.models.providers[providerName].models.push({ id: modelId, name: modelName || modelId });
+        writeConfig(config);
+      }
 
       return json(res, 200, { ok: true, provider: providerName, model: { id: modelId, name: modelName || modelId } });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -1620,14 +1681,27 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true, provider: resolved, removedModel: modelId });
       }
 
-      // For custom providers
-      const customProv = config.models?.providers?.[providerName];
-      if (!customProv) return json(res, 404, { ok: false, error: `Provider "${providerName}" not found` });
-      if (!customProv.models) return json(res, 404, { ok: false, error: 'Model not found' });
-      const idx = customProv.models.findIndex(m => m.id === modelId);
+      // For custom providers: remove from template file
+      const customTplPath = `${TEMPLATES_DIR}/${providerName}.json`;
+      if (!fs.existsSync(customTplPath)) return json(res, 404, { ok: false, error: `Provider "${providerName}" not found` });
+      const customTpl = JSON.parse(fs.readFileSync(customTplPath, 'utf8'));
+      const cProvKey = Object.keys(customTpl.models?.providers || {})[0];
+      if (!cProvKey) return json(res, 404, { ok: false, error: 'No models found for this provider' });
+      const cModels = customTpl.models.providers[cProvKey].models;
+      if (!cModels) return json(res, 404, { ok: false, error: 'Model not found' });
+      const idx = cModels.findIndex(m => m.id === modelId);
       if (idx === -1) return json(res, 404, { ok: false, error: 'Model not found' });
-      customProv.models.splice(idx, 1);
-      writeConfig(config);
+      cModels.splice(idx, 1);
+      fs.writeFileSync(customTplPath, JSON.stringify(customTpl, null, 2), 'utf8');
+
+      // Also update active config if provider is in use
+      if (config.models?.providers?.[providerName]?.models) {
+        const aIdx = config.models.providers[providerName].models.findIndex(m => m.id === modelId);
+        if (aIdx !== -1) {
+          config.models.providers[providerName].models.splice(aIdx, 1);
+          writeConfig(config);
+        }
+      }
 
       return json(res, 200, { ok: true, provider: providerName, removedModel: modelId });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
