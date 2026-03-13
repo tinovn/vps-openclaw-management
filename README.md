@@ -108,11 +108,13 @@ Internet
 
 | Phương thức | Endpoint | Mô tả |
 |-------------|----------|-------|
-| `GET` | `/api/providers` | Danh sách tất cả providers (built-in + custom) |
+| `GET` | `/api/providers` | Danh sách tất cả providers (built-in + custom) kèm models |
 | `GET` | `/api/config` | Cấu hình hiện tại (model, provider, key đã ẩn) |
-| `PUT` | `/api/config/provider` | Chuyển đổi nhà cung cấp built-in |
+| `PUT` | `/api/config/provider` | Chuyển đổi nhà cung cấp (built-in + custom) |
 | `PUT` | `/api/config/api-key` | Đặt API key cho nhà cung cấp |
 | `POST` | `/api/config/test-key` | Kiểm tra API key có hợp lệ không |
+| `POST` | `/api/providers/:provider/models` | Thêm model vào provider |
+| `DELETE` | `/api/providers/:provider/models/:modelId` | Xoá model khỏi provider |
 
 **Chuyển đổi nhà cung cấp built-in:**
 
@@ -133,6 +135,23 @@ curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" 
 ```
 
 API key được lưu ở cả `.env` (dự phòng) và `auth-profiles.json` (chính, được OpenClaw sử dụng).
+
+**Thêm model mới vào provider:**
+
+```bash
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"id":"claude-opus-4-6","name":"Claude Opus 4.6"}' \
+  http://localhost:9998/api/providers/anthropic/models
+```
+
+**Xoá model:**
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $KEY" \
+  http://localhost:9998/api/providers/anthropic/models/claude-opus-4-6
+```
+
+Hoạt động cho cả built-in và custom provider. Model do user thêm được lưu trong config, không mất khi restart.
 
 ### Custom Provider
 
