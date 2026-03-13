@@ -327,11 +327,12 @@ const PROVIDERS = {
     configTemplate: `${TEMPLATES_DIR}/anthropic.json`,
     knownModels: [
       { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
-      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
-      { id: 'claude-opus-4-5', name: 'Claude Opus 4.5' },
+      { id: 'claude-sonnet-4-6-20260218', name: 'Claude Sonnet 4.6' },
+      { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5' },
+      { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5' },
       { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
       { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
-      { id: 'claude-haiku-3-5-20241022', name: 'Claude Haiku 3.5' }
+      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' }
     ],
     testFn: (apiKey) => {
       try {
@@ -350,12 +351,14 @@ const PROVIDERS = {
     authProfileProvider: 'openai',
     configTemplate: `${TEMPLATES_DIR}/openai.json`,
     knownModels: [
-      { id: 'chatgpt-5', name: 'ChatGPT-5' },
-      { id: 'gpt-5.2', name: 'GPT-5.2' },
+      { id: 'gpt-5.4', name: 'GPT-5.4' },
+      { id: 'gpt-5.4-pro-2026-03-05', name: 'GPT-5.4 Pro' },
+      { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
       { id: 'gpt-4.1', name: 'GPT-4.1' },
       { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
       { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano' },
       { id: 'o3', name: 'o3' },
+      { id: 'o3-pro', name: 'o3 Pro' },
       { id: 'o3-mini', name: 'o3 Mini' },
       { id: 'o4-mini', name: 'o4-mini' }
     ],
@@ -367,11 +370,12 @@ const PROVIDERS = {
     authProfileProvider: 'google',
     configTemplate: `${TEMPLATES_DIR}/gemini.json`,
     knownModels: [
-      { id: 'gemini-3.0-pro', name: 'Gemini 3.0 Pro' },
-      { id: 'gemini-3.0-flash', name: 'Gemini 3.0 Flash' },
+      { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
+      { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
+      { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash-Lite Preview' },
       { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
       { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' }
+      { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite' }
     ],
     testFn: (apiKey) => {
       try {
