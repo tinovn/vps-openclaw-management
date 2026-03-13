@@ -974,6 +974,55 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
+  // GET /api/providers — List tat ca providers (built-in + custom)
+  // =========================================================================
+  if (route(req, 'GET', '/api/providers')) {
+    try {
+      const config = readConfig();
+      const currentModel = config.agents?.defaults?.model?.primary || '';
+      const currentProvider = currentModel.split('/')[0];
+
+      const providers = [];
+
+      // Built-in providers
+      for (const [id, p] of Object.entries(PROVIDERS)) {
+        const envVal = getEnvValue(p.envKey);
+        const profileVal = getAuthProfileApiKey(p.authProfileProvider);
+        const val = envVal || profileVal;
+        providers.push({
+          id,
+          name: p.name,
+          type: 'built-in',
+          active: currentProvider === id || currentProvider === resolveProvider(id),
+          apiKey: val ? sanitizeKey(val) : null
+        });
+      }
+
+      // Custom providers
+      const customProviders = config.models?.providers || {};
+      for (const [name, p] of Object.entries(customProviders)) {
+        if (PROVIDERS[name] || PROVIDERS[resolveProvider(name)]) continue;
+        const envKey = `CUSTOM_${name.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+        const envVal = getEnvValue(envKey);
+        const profileVal = getAuthProfileApiKey(name);
+        const val = envVal || profileVal;
+        providers.push({
+          id: name,
+          name: name,
+          type: 'custom',
+          active: currentProvider === name,
+          baseUrl: p.baseUrl,
+          api: p.api,
+          models: p.models || [],
+          apiKey: val ? sanitizeKey(val) : null
+        });
+      }
+
+      return json(res, 200, { ok: true, activeModel: currentModel, providers });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
   // GET /api/config — Xem config hien tai
   // =========================================================================
   if (route(req, 'GET', '/api/config')) {
