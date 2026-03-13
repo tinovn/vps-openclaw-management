@@ -100,8 +100,9 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 | `POST` | `/api/rebuild` | Down + Up (recreate) |
 | `POST` | `/api/reset` | Xoa data, tao lai tu dau |
 | `GET` | `/api/logs` | Container logs |
+| `GET` | `/api/providers` | List tat ca providers (built-in + custom) |
 | `GET` | `/api/config` | Xem config (model, provider, keys masked) |
-| `PUT` | `/api/config/provider` | Doi provider + model |
+| `PUT` | `/api/config/provider` | Doi provider + model (built-in) |
 | `PUT` | `/api/config/api-key` | Doi API key |
 | `POST` | `/api/config/test-key` | Test API key |
 | `POST` | `/api/config/custom-provider` | Tao custom provider moi |
