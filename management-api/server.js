@@ -776,7 +776,7 @@ const server = http.createServer(async (req, res) => {
         version: getEnvValue('OPENCLAW_VERSION') || 'latest',
         mgmtVersion: MGMT_VERSION,
         latestMgmtVersion: latestVersion || MGMT_VERSION,
-        updateAvailable: latestVersion ? latestVersion !== MGMT_VERSION : false,
+        mgmtUpdateAvailable: latestVersion ? latestVersion !== MGMT_VERSION : false,
         ssl: sslMode,
         dnsStatus,
         ...(dnsStatus === 'not_pointed' ? { dnsWarning: `DNS for ${domain} does not point to ${serverIP}. Update your A record to enable Let's Encrypt SSL.` } : {})
