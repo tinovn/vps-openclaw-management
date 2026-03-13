@@ -325,6 +325,11 @@ const PROVIDERS = {
     envKey: 'ANTHROPIC_API_KEY',
     authProfileProvider: 'anthropic',
     configTemplate: `${TEMPLATES_DIR}/anthropic.json`,
+    knownModels: [
+      { id: 'claude-opus-4-5', name: 'Claude Opus 4.5' },
+      { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
+      { id: 'claude-haiku-3-5-20241022', name: 'Claude Haiku 3.5' }
+    ],
     testFn: (apiKey) => {
       try {
         const r = shell(`curl -s -o /dev/null -w '%{http_code}' -X POST https://api.anthropic.com/v1/messages \
@@ -341,6 +346,14 @@ const PROVIDERS = {
     envKey: 'OPENAI_API_KEY',
     authProfileProvider: 'openai',
     configTemplate: `${TEMPLATES_DIR}/openai.json`,
+    knownModels: [
+      { id: 'gpt-5.2', name: 'GPT-5.2' },
+      { id: 'gpt-4.1', name: 'GPT-4.1' },
+      { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
+      { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano' },
+      { id: 'o3', name: 'o3' },
+      { id: 'o4-mini', name: 'o4-mini' }
+    ],
     testFn: (apiKey) => testBearerModels('https://api.openai.com/v1/models', apiKey)
   },
   gemini: {
@@ -348,6 +361,11 @@ const PROVIDERS = {
     envKey: 'GEMINI_API_KEY',
     authProfileProvider: 'google',
     configTemplate: `${TEMPLATES_DIR}/gemini.json`,
+    knownModels: [
+      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' }
+    ],
     testFn: (apiKey) => {
       try {
         const r = shell(`curl -s -o /dev/null -w '%{http_code}' \
@@ -991,16 +1009,25 @@ const server = http.createServer(async (req, res) => {
         const val = envVal || profileVal;
 
         // Read models from template config
-        let models = [];
+        let tplModels = [];
         let defaultModel = null;
         try {
           const tpl = JSON.parse(fs.readFileSync(p.configTemplate, 'utf8'));
           defaultModel = tpl.agents?.defaults?.model?.primary || null;
           const tplProviders = tpl.models?.providers || {};
           for (const prov of Object.values(tplProviders)) {
-            if (Array.isArray(prov.models)) models = prov.models;
+            if (Array.isArray(prov.models)) tplModels = prov.models;
           }
         } catch {}
+
+        // Merge: template models + knownModels + user-added models (deduplicate by id)
+        const knownModels = p.knownModels || [];
+        const userModels = (config._customModels && config._customModels[id]) || [];
+        const seen = new Set();
+        const models = [];
+        for (const m of [...tplModels, ...knownModels, ...userModels]) {
+          if (!seen.has(m.id)) { seen.add(m.id); models.push(m); }
+        }
 
         providers.push({
           id,
@@ -1462,6 +1489,85 @@ const server = http.createServer(async (req, res) => {
       restartContainer('openclaw');
 
       return json(res, 200, { ok: true, provider: providerName, removed: true });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/providers/:provider/models — Them model vao provider
+  // =========================================================================
+  if ((m = route(req, 'POST', '/api/providers/:provider/models'))) {
+    try {
+      const body = await parseBody(req);
+      const providerName = m.params.provider;
+      const { id: modelId, name: modelName } = body;
+
+      if (!modelId) return json(res, 400, { ok: false, error: 'Missing model id' });
+
+      const config = readConfig();
+
+      // For built-in providers: store in _customModels
+      if (PROVIDERS[providerName] || PROVIDERS[resolveProvider(providerName)]) {
+        const resolved = PROVIDERS[providerName] ? providerName : resolveProvider(providerName);
+        if (!config._customModels) config._customModels = {};
+        if (!config._customModels[resolved]) config._customModels[resolved] = [];
+        if (config._customModels[resolved].find(m => m.id === modelId)) {
+          return json(res, 409, { ok: false, error: `Model "${modelId}" already exists` });
+        }
+        config._customModels[resolved].push({ id: modelId, name: modelName || modelId });
+        writeConfig(config);
+        return json(res, 200, { ok: true, provider: resolved, model: { id: modelId, name: modelName || modelId } });
+      }
+
+      // For custom providers: add to models.providers.<name>.models
+      const customProv = config.models?.providers?.[providerName];
+      if (!customProv) {
+        return json(res, 404, { ok: false, error: `Provider "${providerName}" not found` });
+      }
+      if (!customProv.models) customProv.models = [];
+      if (customProv.models.find(m => m.id === modelId)) {
+        return json(res, 409, { ok: false, error: `Model "${modelId}" already exists` });
+      }
+      customProv.models.push({ id: modelId, name: modelName || modelId });
+      writeConfig(config);
+
+      return json(res, 200, { ok: true, provider: providerName, model: { id: modelId, name: modelName || modelId } });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // DELETE /api/providers/:provider/models/:modelId — Xoa model khoi provider
+  // =========================================================================
+  if ((m = route(req, 'DELETE', '/api/providers/:provider/models/:modelId'))) {
+    try {
+      const providerName = m.params.provider;
+      const modelId = decodeURIComponent(m.params.modelId);
+
+      const config = readConfig();
+
+      // For built-in providers: remove from _customModels
+      if (PROVIDERS[providerName] || PROVIDERS[resolveProvider(providerName)]) {
+        const resolved = PROVIDERS[providerName] ? providerName : resolveProvider(providerName);
+        const list = config._customModels?.[resolved];
+        if (!list) return json(res, 404, { ok: false, error: 'Model not found in user-added models' });
+        const idx = list.findIndex(m => m.id === modelId);
+        if (idx === -1) return json(res, 404, { ok: false, error: 'Model not found in user-added models' });
+        list.splice(idx, 1);
+        if (list.length === 0) delete config._customModels[resolved];
+        if (config._customModels && Object.keys(config._customModels).length === 0) delete config._customModels;
+        writeConfig(config);
+        return json(res, 200, { ok: true, provider: resolved, removedModel: modelId });
+      }
+
+      // For custom providers
+      const customProv = config.models?.providers?.[providerName];
+      if (!customProv) return json(res, 404, { ok: false, error: `Provider "${providerName}" not found` });
+      if (!customProv.models) return json(res, 404, { ok: false, error: 'Model not found' });
+      const idx = customProv.models.findIndex(m => m.id === modelId);
+      if (idx === -1) return json(res, 404, { ok: false, error: 'Model not found' });
+      customProv.models.splice(idx, 1);
+      writeConfig(config);
+
+      return json(res, 200, { ok: true, provider: providerName, removedModel: modelId });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
