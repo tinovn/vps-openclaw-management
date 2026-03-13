@@ -1082,10 +1082,34 @@ const server = http.createServer(async (req, res) => {
       const provider = resolveProvider(rawProvider);
 
       const providerConfig = PROVIDERS[provider];
-      if (!providerConfig) {
-        return json(res, 400, { ok: false, error: 'Invalid provider. Use: ' + Object.keys(PROVIDERS).join(', ') });
+
+      // Check if it's a custom provider
+      let config;
+      try { config = readConfig(); } catch { config = {}; }
+      const customProvider = config.models?.providers?.[provider];
+
+      if (!providerConfig && !customProvider) {
+        // List available: built-in + custom
+        const customNames = Object.keys(config.models?.providers || {}).filter(n => !PROVIDERS[n] && !PROVIDERS[resolveProvider(n)]);
+        const all = [...Object.keys(PROVIDERS), ...customNames];
+        return json(res, 400, { ok: false, error: 'Invalid provider. Use: ' + all.join(', ') });
       }
 
+      // --- Custom provider: just switch model ---
+      if (!providerConfig && customProvider) {
+        if (!model) return json(res, 400, { ok: false, error: 'Missing model. Use format: provider/model-id' });
+
+        if (!config.agents) config.agents = { defaults: { model: {} } };
+        if (!config.agents.defaults) config.agents.defaults = { model: {} };
+        if (!config.agents.defaults.model) config.agents.defaults.model = {};
+        config.agents.defaults.model.primary = model.includes('/') ? model : `${provider}/${model}`;
+
+        writeConfig(config);
+        restartContainer('openclaw');
+        return json(res, 200, { ok: true, provider, model: config.agents.defaults.model.primary });
+      }
+
+      // --- Built-in provider ---
       const templatePath = providerConfig.configTemplate;
       if (!fs.existsSync(templatePath)) {
         return json(res, 500, { ok: false, error: `Template config not found: ${templatePath}` });
@@ -1093,11 +1117,6 @@ const server = http.createServer(async (req, res) => {
 
       const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
       const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
-
-      // Read existing config and only update model + gateway essentials
-      // Preserve all other sections (channels, plugins, meta, messages, etc.)
-      let config;
-      try { config = readConfig(); } catch { config = {}; }
 
       // Update model from template or body
       if (!config.agents) config.agents = template.agents;
@@ -1114,10 +1133,26 @@ const server = http.createServer(async (req, res) => {
 
       // Copy models section from template (e.g. custom baseUrl for chatgpt proxy)
       // Remove it when switching to a provider that doesn't need it
+      // But preserve existing custom providers
+      const existingCustom = {};
+      if (config.models?.providers) {
+        for (const [name, p] of Object.entries(config.models.providers)) {
+          if (!PROVIDERS[name] && !PROVIDERS[resolveProvider(name)]) existingCustom[name] = p;
+        }
+      }
+
       if (template.models) {
         config.models = template.models;
       } else {
         delete config.models;
+      }
+
+      // Restore custom providers
+      if (Object.keys(existingCustom).length > 0) {
+        if (!config.models) config.models = { mode: 'merge', providers: {} };
+        if (!config.models.providers) config.models.providers = {};
+        config.models.mode = 'merge';
+        Object.assign(config.models.providers, existingCustom);
       }
 
       // Write auth-profiles.json if there's an API key in env for this provider
