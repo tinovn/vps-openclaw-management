@@ -393,7 +393,7 @@ const PROVIDERS = {
     name: 'Google Gemini',
     envKey: 'GEMINI_API_KEY',
     authProfileProvider: 'google',
-    configTemplate: `${TEMPLATES_DIR}/gemini.json`,
+    configTemplate: `${TEMPLATES_DIR}/google.json`,
     knownModels: [
       { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
       { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
@@ -1875,7 +1875,7 @@ const server = http.createServer(async (req, res) => {
       } catch {}
 
       const configTemplates = [
-        'anthropic', 'openai', 'gemini',
+        'anthropic', 'openai', 'google',
         'deepseek', 'groq', 'together', 'mistral', 'xai',
         'cerebras', 'sambanova', 'fireworks', 'cohere',
         'yi', 'baichuan', 'stepfun', 'siliconflow', 'novita', 'openrouter',
