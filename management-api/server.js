@@ -984,11 +984,21 @@ const server = http.createServer(async (req, res) => {
 
       const apiKeys = {};
       for (const [id, p] of Object.entries(PROVIDERS)) {
-        // Check env var first, then auth-profiles.json
         const envVal = getEnvValue(p.envKey);
         const profileVal = getAuthProfileApiKey(p.authProfileProvider);
         const val = envVal || profileVal;
         apiKeys[id] = val ? sanitizeKey(val) : null;
+      }
+
+      // Include custom providers
+      const customProviders = config.models?.providers || {};
+      for (const [name, p] of Object.entries(customProviders)) {
+        if (PROVIDERS[name] || PROVIDERS[resolveProvider(name)]) continue;
+        const envKey = `CUSTOM_${name.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+        const envVal = getEnvValue(envKey);
+        const profileVal = getAuthProfileApiKey(name);
+        const val = envVal || profileVal;
+        apiKeys[name] = val ? sanitizeKey(val) : null;
       }
 
       const agentsList = getAgentsList(config);
