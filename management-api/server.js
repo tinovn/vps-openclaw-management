@@ -1148,6 +1148,215 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
+  // POST /api/config/custom-provider — Tao custom provider moi
+  // =========================================================================
+  if (route(req, 'POST', '/api/config/custom-provider')) {
+    try {
+      const body = await parseBody(req);
+      const { baseUrl, model, modelName, apiKey, api } = body;
+
+      if (!baseUrl || !model || !apiKey) {
+        return json(res, 400, { ok: false, error: 'Missing required fields: baseUrl, model, apiKey' });
+      }
+
+      // Parse provider/model-id
+      const parts = model.split('/');
+      if (parts.length < 2) {
+        return json(res, 400, { ok: false, error: 'Model must be in format "provider/model-id"' });
+      }
+      const providerName = parts[0];
+      const modelId = parts.slice(1).join('/');
+
+      if (!/^[a-z][a-z0-9-]{0,31}$/.test(providerName)) {
+        return json(res, 400, { ok: false, error: 'Invalid provider name. Use lowercase letters, numbers, hyphens.' });
+      }
+
+      // Block built-in providers
+      if (PROVIDERS[providerName] || PROVIDERS[resolveProvider(providerName)]) {
+        return json(res, 400, { ok: false, error: `"${providerName}" is a built-in provider. Use PUT /api/config/provider instead.` });
+      }
+
+      try { new URL(baseUrl); } catch {
+        return json(res, 400, { ok: false, error: 'Invalid baseUrl' });
+      }
+
+      let config;
+      try { config = readConfig(); } catch { config = {}; }
+
+      // Ensure models section
+      if (!config.models) config.models = { mode: 'merge', providers: {} };
+      if (!config.models.providers) config.models.providers = {};
+      config.models.mode = 'merge';
+
+      const envKey = `CUSTOM_${providerName.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+
+      // Add or update provider
+      const existing = config.models.providers[providerName];
+      if (existing) {
+        existing.baseUrl = baseUrl;
+        if (api) existing.api = api;
+        const models = existing.models || [];
+        if (!models.find(m => m.id === modelId)) {
+          models.push({ id: modelId, name: modelName || modelId });
+          existing.models = models;
+        }
+      } else {
+        config.models.providers[providerName] = {
+          baseUrl,
+          apiKey: `\${${envKey}}`,
+          api: api || 'openai-completions',
+          models: [{ id: modelId, name: modelName || modelId }]
+        };
+      }
+
+      // Set as primary model
+      if (!config.agents) config.agents = { defaults: { model: {} } };
+      if (!config.agents.defaults) config.agents.defaults = { model: {} };
+      if (!config.agents.defaults.model) config.agents.defaults.model = {};
+      config.agents.defaults.model.primary = model;
+
+      writeConfig(config);
+
+      // Save API key
+      setEnvValue(envKey, apiKey);
+      setAuthProfileApiKey(providerName, apiKey);
+
+      restartContainer('openclaw');
+
+      return json(res, 200, { ok: true, provider: providerName, model, baseUrl, apiKey: sanitizeKey(apiKey) });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/config/custom-providers — List custom providers
+  // =========================================================================
+  if (route(req, 'GET', '/api/config/custom-providers')) {
+    try {
+      let config;
+      try { config = readConfig(); } catch { config = {}; }
+
+      const customProviders = {};
+      const providers = config.models?.providers || {};
+      for (const [name, p] of Object.entries(providers)) {
+        if (PROVIDERS[name] || PROVIDERS[resolveProvider(name)]) continue;
+
+        const envKey = `CUSTOM_${name.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+        const envVal = getEnvValue(envKey);
+        const profileVal = getAuthProfileApiKey(name);
+        const keyVal = envVal || profileVal;
+
+        customProviders[name] = {
+          baseUrl: p.baseUrl,
+          api: p.api,
+          models: p.models || [],
+          apiKey: keyVal ? sanitizeKey(keyVal) : null
+        };
+      }
+
+      const currentModel = config.agents?.defaults?.model?.primary || '';
+      const currentProvider = currentModel.split('/')[0];
+
+      return json(res, 200, { ok: true, providers: customProviders, activeProvider: currentProvider, activeModel: currentModel });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // PUT /api/config/custom-provider/:provider — Update custom provider
+  // =========================================================================
+  if ((m = route(req, 'PUT', '/api/config/custom-provider/:provider'))) {
+    try {
+      const providerName = m.params.provider;
+      const body = await parseBody(req);
+
+      if (PROVIDERS[providerName] || PROVIDERS[resolveProvider(providerName)]) {
+        return json(res, 400, { ok: false, error: `"${providerName}" is a built-in provider.` });
+      }
+
+      let config;
+      try { config = readConfig(); } catch { config = {}; }
+
+      if (!config.models?.providers?.[providerName]) {
+        return json(res, 404, { ok: false, error: `Custom provider "${providerName}" not found` });
+      }
+
+      const p = config.models.providers[providerName];
+
+      if (body.baseUrl) {
+        try { new URL(body.baseUrl); } catch {
+          return json(res, 400, { ok: false, error: 'Invalid baseUrl' });
+        }
+        p.baseUrl = body.baseUrl;
+      }
+      if (body.api) p.api = body.api;
+
+      // Add model if provided
+      if (body.model) {
+        const modelId = body.model.includes('/') ? body.model.split('/').slice(1).join('/') : body.model;
+        if (!p.models) p.models = [];
+        if (!p.models.find(m => m.id === modelId)) {
+          p.models.push({ id: modelId, name: body.modelName || modelId });
+        }
+      }
+
+      // Update API key if provided
+      if (body.apiKey) {
+        const envKey = `CUSTOM_${providerName.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+        setEnvValue(envKey, body.apiKey);
+        setAuthProfileApiKey(providerName, body.apiKey);
+      }
+
+      writeConfig(config);
+      restartContainer('openclaw');
+
+      return json(res, 200, { ok: true, provider: providerName, config: { baseUrl: p.baseUrl, api: p.api, models: p.models } });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // DELETE /api/config/custom-provider/:provider — Xoa custom provider
+  // =========================================================================
+  if ((m = route(req, 'DELETE', '/api/config/custom-provider/:provider'))) {
+    try {
+      const providerName = m.params.provider;
+
+      if (PROVIDERS[providerName] || PROVIDERS[resolveProvider(providerName)]) {
+        return json(res, 400, { ok: false, error: `"${providerName}" is a built-in provider. Cannot delete.` });
+      }
+
+      let config;
+      try { config = readConfig(); } catch { config = {}; }
+
+      if (!config.models?.providers?.[providerName]) {
+        return json(res, 404, { ok: false, error: `Custom provider "${providerName}" not found` });
+      }
+
+      delete config.models.providers[providerName];
+
+      // Clean up empty models section
+      if (Object.keys(config.models.providers).length === 0) {
+        delete config.models;
+      }
+
+      // If current model uses this provider, fallback to anthropic
+      const currentModel = config.agents?.defaults?.model?.primary || '';
+      if (currentModel.startsWith(providerName + '/')) {
+        config.agents.defaults.model.primary = 'anthropic/claude-sonnet-4-20250514';
+      }
+
+      writeConfig(config);
+
+      // Remove env var + auth profile
+      const envKey = `CUSTOM_${providerName.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+      try { removeEnvValue(envKey); } catch {}
+      try { removeAgentApiKey('main', providerName); } catch {}
+
+      restartContainer('openclaw');
+
+      return json(res, 200, { ok: true, provider: providerName, removed: true });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
   // GET /api/channels — List kenh nhan tin
   // =========================================================================
   if (route(req, 'GET', '/api/channels')) {

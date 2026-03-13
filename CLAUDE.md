@@ -104,6 +104,10 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 | `PUT` | `/api/config/provider` | Doi provider + model |
 | `PUT` | `/api/config/api-key` | Doi API key |
 | `POST` | `/api/config/test-key` | Test API key |
+| `POST` | `/api/config/custom-provider` | Tao custom provider moi |
+| `GET` | `/api/config/custom-providers` | List custom providers |
+| `PUT` | `/api/config/custom-provider/:provider` | Update custom provider |
+| `DELETE` | `/api/config/custom-provider/:provider` | Xoa custom provider |
 | `GET` | `/api/channels` | List kenh nhan tin |
 | `PUT` | `/api/channels/:ch` | Them/sua kenh |
 | `DELETE` | `/api/channels/:ch` | Xoa kenh |
@@ -172,6 +176,27 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/rebu
 # CLI proxy
 curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
   -d '{"command":"models scan"}' http://localhost:9998/api/cli
+```
+
+### Custom Provider vi du
+
+```bash
+# Tao custom provider (OpenAI-compatible endpoint)
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
+  -d '{"baseUrl":"https://api.example.com/v1","model":"myprovider/my-model","apiKey":"sk-xxx"}' \
+  http://localhost:9998/api/config/custom-provider
+
+# List custom providers
+curl -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/config/custom-providers
+
+# Update custom provider (them model, doi endpoint, doi key)
+curl -X PUT -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"another-model","modelName":"Another Model"}' \
+  http://localhost:9998/api/config/custom-provider/myprovider
+
+# Xoa custom provider
+curl -X DELETE -H "Authorization: Bearer $MGMT_KEY" \
+  http://localhost:9998/api/config/custom-provider/myprovider
 ```
 
 ### Multi-Agent vi du
