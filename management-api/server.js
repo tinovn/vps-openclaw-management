@@ -330,12 +330,9 @@ function getBindings(config) {
   return Array.isArray(config.bindings) ? config.bindings : [];
 }
 
-// --- Provider aliases (e.g. "google" → "gemini") ---
-const PROVIDER_ALIASES = { google: 'gemini' };
-// Reverse map: PROVIDERS key → model prefix (e.g. "gemini" → "google")
-const MODEL_PREFIX_MAP = { gemini: 'google' };
+// --- Provider aliases ---
+const PROVIDER_ALIASES = { gemini: 'google' };
 function resolveProvider(name) { return PROVIDER_ALIASES[name] || name; }
-function resolveModelPrefix(provider) { return MODEL_PREFIX_MAP[provider] || provider; }
 
 // --- Provider configs ---
 // Helper: test API key via Bearer auth + GET /models endpoint
@@ -392,7 +389,7 @@ const PROVIDERS = {
     ],
     testFn: (apiKey) => testBearerModels('https://api.openai.com/v1/models', apiKey)
   },
-  gemini: {
+  google: {
     name: 'Google Gemini',
     envKey: 'GEMINI_API_KEY',
     authProfileProvider: 'google',
@@ -1210,8 +1207,7 @@ const server = http.createServer(async (req, res) => {
       let finalModel = model || template.agents.defaults.model.primary;
       if (finalModel && finalModel.includes('/')) {
         const [prefix, ...rest] = finalModel.split('/');
-        const correctPrefix = resolveModelPrefix(resolveProvider(prefix));
-        finalModel = `${correctPrefix}/${rest.join('/')}`;
+        finalModel = `${resolveProvider(prefix)}/${rest.join('/')}`;
       }
       config.agents.defaults.model.primary = finalModel;
 
