@@ -24,7 +24,7 @@ const AUTH_PROFILES_FILE = `${AUTH_PROFILES_DIR}/auth-profiles.json`;
 
 // --- GitHub version check (cached) ---
 let _latestVersionCache = { version: null, checkedAt: 0 };
-const VERSION_CHECK_INTERVAL = 10 * 60 * 1000; // 10 minutes
+const VERSION_CHECK_INTERVAL = 60 * 1000; // 1 minute
 
 function getLatestVersion() {
   const now = Date.now();
