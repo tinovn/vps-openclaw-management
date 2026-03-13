@@ -1061,12 +1061,11 @@ const server = http.createServer(async (req, res) => {
           }
         } catch {}
 
-        // Merge: template models + knownModels + user-added models (deduplicate by id)
+        // Merge: template models + knownModels (deduplicate by id)
         const knownModels = p.knownModels || [];
-        const userModels = (config._customModels && config._customModels[id]) || [];
         const seen = new Set();
         const models = [];
-        for (const m of [...tplModels, ...knownModels, ...userModels]) {
+        for (const m of [...tplModels, ...knownModels]) {
           if (!seen.has(m.id)) { seen.add(m.id); models.push(m); }
         }
 
@@ -1552,16 +1551,29 @@ const server = http.createServer(async (req, res) => {
 
       const config = readConfig();
 
-      // For built-in providers: store in _customModels
+      // For built-in providers: add to template config file
       if (PROVIDERS[providerName] || PROVIDERS[resolveProvider(providerName)]) {
         const resolved = PROVIDERS[providerName] ? providerName : resolveProvider(providerName);
-        if (!config._customModels) config._customModels = {};
-        if (!config._customModels[resolved]) config._customModels[resolved] = [];
-        if (config._customModels[resolved].find(m => m.id === modelId)) {
-          return json(res, 409, { ok: false, error: `Model "${modelId}" already exists` });
+        const p = PROVIDERS[resolved];
+        const tplPath = p.configTemplate;
+        let tpl = {};
+        try { tpl = JSON.parse(fs.readFileSync(tplPath, 'utf8')); } catch {}
+        // Find models array in template (models.providers.<key>.models or knownModels)
+        const provKey = Object.keys(tpl.models?.providers || {})[0];
+        const modelsList = provKey ? tpl.models.providers[provKey].models : null;
+        if (!modelsList) {
+          // No models in template — add models section
+          if (!tpl.models) tpl.models = { mode: 'merge', providers: {} };
+          if (!tpl.models.providers) tpl.models.providers = {};
+          if (!tpl.models.providers[resolved]) tpl.models.providers[resolved] = { models: [] };
+          tpl.models.providers[resolved].models = [{ id: modelId, name: modelName || modelId }];
+        } else {
+          if (modelsList.find(m => m.id === modelId)) {
+            return json(res, 409, { ok: false, error: `Model "${modelId}" already exists` });
+          }
+          modelsList.push({ id: modelId, name: modelName || modelId });
         }
-        config._customModels[resolved].push({ id: modelId, name: modelName || modelId });
-        writeConfig(config);
+        fs.writeFileSync(tplPath, JSON.stringify(tpl, null, 2), 'utf8');
         return json(res, 200, { ok: true, provider: resolved, model: { id: modelId, name: modelName || modelId } });
       }
 
@@ -1591,17 +1603,20 @@ const server = http.createServer(async (req, res) => {
 
       const config = readConfig();
 
-      // For built-in providers: remove from _customModels
+      // For built-in providers: remove from template config file
       if (PROVIDERS[providerName] || PROVIDERS[resolveProvider(providerName)]) {
         const resolved = PROVIDERS[providerName] ? providerName : resolveProvider(providerName);
-        const list = config._customModels?.[resolved];
-        if (!list) return json(res, 404, { ok: false, error: 'Model not found in user-added models' });
-        const idx = list.findIndex(m => m.id === modelId);
-        if (idx === -1) return json(res, 404, { ok: false, error: 'Model not found in user-added models' });
-        list.splice(idx, 1);
-        if (list.length === 0) delete config._customModels[resolved];
-        if (config._customModels && Object.keys(config._customModels).length === 0) delete config._customModels;
-        writeConfig(config);
+        const p = PROVIDERS[resolved];
+        const tplPath = p.configTemplate;
+        let tpl = {};
+        try { tpl = JSON.parse(fs.readFileSync(tplPath, 'utf8')); } catch {}
+        const provKey = Object.keys(tpl.models?.providers || {})[0];
+        const modelsList = provKey ? tpl.models.providers[provKey].models : null;
+        if (!modelsList) return json(res, 404, { ok: false, error: 'No models found for this provider' });
+        const idx = modelsList.findIndex(m => m.id === modelId);
+        if (idx === -1) return json(res, 404, { ok: false, error: 'Model not found' });
+        modelsList.splice(idx, 1);
+        fs.writeFileSync(tplPath, JSON.stringify(tpl, null, 2), 'utf8');
         return json(res, 200, { ok: true, provider: resolved, removedModel: modelId });
       }
 
