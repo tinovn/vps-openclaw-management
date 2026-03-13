@@ -6,7 +6,7 @@ Triển khai và quản lý [OpenClaw](https://github.com/openclaw/openclaw) tr�
 
 - **Cài đặt một lệnh** — Tự động thiết lập Docker, OpenClaw, Caddy reverse proxy, tường lửa và fail2ban
 - **Management API** — REST API (cổng 9998) để quản lý từ xa qua HostBill hoặc bất kỳ HTTP client nào
-- **Đa nhà cung cấp AI** — Chuyển đổi giữa Anthropic, OpenAI và Google Gemini nhanh chóng
+- **Đa nhà cung cấp AI** — 21 nhà cung cấp có sẵn + hỗ trợ thêm custom provider (OpenAI-compatible)
 - **Kênh nhắn tin** — Tích hợp Telegram, Discord, Slack, Zalo OA
 - **Tự động SSL** — Let's Encrypt qua Caddy, hoặc self-signed cho truy cập bằng IP
 - **Bảo mật** — Tường lửa UFW, fail2ban, xác thực API key với giới hạn tốc độ
@@ -108,12 +108,13 @@ Internet
 
 | Phương thức | Endpoint | Mô tả |
 |-------------|----------|-------|
+| `GET` | `/api/providers` | Danh sách tất cả providers (built-in + custom) |
 | `GET` | `/api/config` | Cấu hình hiện tại (model, provider, key đã ẩn) |
-| `PUT` | `/api/config/provider` | Chuyển đổi nhà cung cấp và model |
+| `PUT` | `/api/config/provider` | Chuyển đổi nhà cung cấp built-in |
 | `PUT` | `/api/config/api-key` | Đặt API key cho nhà cung cấp |
 | `POST` | `/api/config/test-key` | Kiểm tra API key có hợp lệ không |
 
-**Chuyển đổi nhà cung cấp:**
+**Chuyển đổi nhà cung cấp built-in:**
 
 ```bash
 curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
@@ -121,13 +122,7 @@ curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" 
   http://localhost:9998/api/config/provider
 ```
 
-Các nhà cung cấp và model hỗ trợ:
-
-| Nhà cung cấp | Model mẫu |
-|---------------|-----------|
-| `anthropic` | `anthropic/claude-opus-4-5`, `anthropic/claude-sonnet-4-20250514` |
-| `openai` | `openai/gpt-5.2`, `openai/gpt-4.1-mini` |
-| `gemini` | `google/gemini-2.5-pro`, `google/gemini-2.5-flash` |
+21 nhà cung cấp có sẵn: `anthropic`, `openai`, `gemini`, `deepseek`, `groq`, `together`, `mistral`, `xai`, `cerebras`, `sambanova`, `fireworks`, `cohere`, `yi`, `baichuan`, `stepfun`, `siliconflow`, `novita`, `openrouter`, `minimax`, `moonshot`, `zhipu`
 
 **Đặt API key:**
 
@@ -138,6 +133,50 @@ curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" 
 ```
 
 API key được lưu ở cả `.env` (dự phòng) và `auth-profiles.json` (chính, được OpenClaw sử dụng).
+
+### Custom Provider
+
+Thêm nhà cung cấp AI bất kỳ (OpenAI-compatible) ngoài danh sách có sẵn.
+
+| Phương thức | Endpoint | Mô tả |
+|-------------|----------|-------|
+| `POST` | `/api/config/custom-provider` | Tạo custom provider mới |
+| `GET` | `/api/config/custom-providers` | Danh sách custom providers |
+| `PUT` | `/api/config/custom-provider/:provider` | Cập nhật (thêm model, đổi endpoint/key) |
+| `DELETE` | `/api/config/custom-provider/:provider` | Xoá custom provider |
+
+**Tạo custom provider:**
+
+```bash
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"baseUrl":"https://api.example.com/v1","model":"myprovider/my-model","modelName":"My Model","apiKey":"sk-xxx"}' \
+  http://localhost:9998/api/config/custom-provider
+```
+
+| Trường | Bắt buộc | Mô tả |
+|--------|----------|-------|
+| `baseUrl` | Có | Endpoint API (OpenAI-compatible) |
+| `model` | Có | Định dạng `provider/model-id` |
+| `apiKey` | Có | API key |
+| `modelName` | Không | Tên hiển thị (mặc định = model-id) |
+| `api` | Không | Loại API (mặc định `openai-completions`) |
+
+**Thêm model vào provider đã tạo:**
+
+```bash
+curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"model":"another-model","modelName":"Another Model"}' \
+  http://localhost:9998/api/config/custom-provider/myprovider
+```
+
+**Xoá custom provider:**
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $KEY" \
+  http://localhost:9998/api/config/custom-provider/myprovider
+```
+
+Khi xoá, nếu model đang dùng thuộc provider bị xoá, hệ thống tự chuyển về `anthropic/claude-sonnet-4-20250514`.
 
 ### Tên miền và SSL
 
