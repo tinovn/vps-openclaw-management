@@ -11,6 +11,8 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
+const MGMT_VERSION = '1.0.0';
+const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
 const CONFIG_DIR = `${COMPOSE_DIR}/config`;
@@ -19,6 +21,29 @@ const CADDYFILE = `${COMPOSE_DIR}/Caddyfile`;
 const TEMPLATES_DIR = '/etc/openclaw/config';
 const AUTH_PROFILES_DIR = `${CONFIG_DIR}/agents/main/agent`;
 const AUTH_PROFILES_FILE = `${AUTH_PROFILES_DIR}/auth-profiles.json`;
+
+// --- GitHub version check (cached) ---
+let _latestVersionCache = { version: null, checkedAt: 0 };
+const VERSION_CHECK_INTERVAL = 10 * 60 * 1000; // 10 minutes
+
+function getLatestVersion() {
+  const now = Date.now();
+  if (_latestVersionCache.version && (now - _latestVersionCache.checkedAt) < VERSION_CHECK_INTERVAL) {
+    return _latestVersionCache.version;
+  }
+  try {
+    const raw = execSync(
+      `curl -sf --max-time 5 "https://raw.githubusercontent.com/${GITHUB_REPO}/main/management-api/server.js" 2>/dev/null | head -20`,
+      { encoding: 'utf8', timeout: 8000 }
+    );
+    const match = raw.match(/MGMT_VERSION\s*=\s*'([^']+)'/);
+    if (match) {
+      _latestVersionCache = { version: match[1], checkedAt: now };
+      return match[1];
+    }
+  } catch {}
+  return _latestVersionCache.version || null;
+}
 
 // --- Login user credentials (stored in .env) ---
 const SCRYPT_KEYLEN = 64;
@@ -738,6 +763,8 @@ const server = http.createServer(async (req, res) => {
         ? (caddyTls === 'tls internal' ? 'self-signed' : 'letsencrypt')
         : 'none';
 
+      const latestVersion = getLatestVersion();
+
       return json(res, 200, {
         ok: true,
         domain: domain,
@@ -746,7 +773,10 @@ const server = http.createServer(async (req, res) => {
         gatewayToken: token,
         mgmtApiKey: sanitizeKey(getMgmtApiKey()),
         status,
-        version: getEnvValue('OPENCLAW_VERSION') || 'latest',
+        version: MGMT_VERSION,
+        latestVersion: latestVersion || MGMT_VERSION,
+        updateAvailable: latestVersion ? latestVersion !== MGMT_VERSION : false,
+        openclawVersion: getEnvValue('OPENCLAW_VERSION') || 'latest',
         ssl: sslMode,
         dnsStatus,
         ...(dnsStatus === 'not_pointed' ? { dnsWarning: `DNS for ${domain} does not point to ${serverIP}. Update your A record to enable Let's Encrypt SSL.` } : {})
