@@ -989,11 +989,26 @@ const server = http.createServer(async (req, res) => {
         const envVal = getEnvValue(p.envKey);
         const profileVal = getAuthProfileApiKey(p.authProfileProvider);
         const val = envVal || profileVal;
+
+        // Read models from template config
+        let models = [];
+        let defaultModel = null;
+        try {
+          const tpl = JSON.parse(fs.readFileSync(p.configTemplate, 'utf8'));
+          defaultModel = tpl.agents?.defaults?.model?.primary || null;
+          const tplProviders = tpl.models?.providers || {};
+          for (const prov of Object.values(tplProviders)) {
+            if (Array.isArray(prov.models)) models = prov.models;
+          }
+        } catch {}
+
         providers.push({
           id,
           name: p.name,
           type: 'built-in',
           active: currentProvider === id || currentProvider === resolveProvider(id),
+          defaultModel,
+          models,
           apiKey: val ? sanitizeKey(val) : null
         });
       }
