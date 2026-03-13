@@ -33,13 +33,13 @@ function getLatestVersion() {
   }
   try {
     const raw = execSync(
-      `curl -sf --max-time 5 "https://raw.githubusercontent.com/${GITHUB_REPO}/main/management-api/server.js" 2>/dev/null | head -20`,
+      `curl -sf --max-time 5 "https://api.github.com/repos/${GITHUB_REPO}/contents/version.json" -H "Accept: application/vnd.github.v3.raw" 2>/dev/null`,
       { encoding: 'utf8', timeout: 8000 }
     );
-    const match = raw.match(/MGMT_VERSION\s*=\s*'([^']+)'/);
-    if (match) {
-      _latestVersionCache = { version: match[1], checkedAt: now };
-      return match[1];
+    const data = JSON.parse(raw);
+    if (data.version) {
+      _latestVersionCache = { version: data.version, checkedAt: now };
+      return data.version;
     }
   } catch {}
   return _latestVersionCache.version || null;
