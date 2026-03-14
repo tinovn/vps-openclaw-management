@@ -363,8 +363,8 @@ cat > /etc/openclaw/config/openai.json << 'CONFIGEOF'
 }
 CONFIGEOF
 
-# --- gemini.json ---
-cat > /etc/openclaw/config/gemini.json << 'CONFIGEOF'
+# --- google.json ---
+cat > /etc/openclaw/config/google.json << 'CONFIGEOF'
 {
   "agents": {
     "defaults": {
