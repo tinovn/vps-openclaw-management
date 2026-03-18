@@ -279,6 +279,42 @@ curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json"
   http://localhost:9998/api/cli
 ```
 
+### Terminal GUI
+
+| Phương thức | Endpoint | Mô tả |
+|-------------|----------|-------|
+| `GET` | `/terminal` | Giao diện terminal web (xterm.js) |
+| `GET` | `/api/terminal/stream?cmd=...&token=...` | SSE stream output lệnh theo thời gian thực |
+
+Truy cập `http://<ip>:9998/terminal` để mở terminal trong trình duyệt. Nhập Management API Key và click **Connect**.
+
+**Lệnh được phép:**
+
+| Nhóm | Lệnh |
+|------|------|
+| Docker Compose | `docker compose ps/logs/restart/pull/up/down/exec/stats/images/top` |
+| OpenClaw CLI | `openclaw <cmd>` hoặc `claw <cmd>` |
+| Hệ thống | `df`, `free`, `uptime`, `ps`, `date`, `hostname`, `uname` |
+
+- Hỗ trợ streaming trực tiếp (ví dụ: `docker compose logs -f`)
+- **Ctrl+C** để huỷ lệnh đang chạy, **Ctrl+L** để xoá màn hình
+- Lịch sử lệnh lưu trong localStorage (phím ↑↓)
+- Quick-command bar cho các lệnh thường dùng
+
+**SSE endpoint** (dùng khi tích hợp vào web app khác):
+
+```bash
+# Xem logs container theo thời gian thực
+curl -N "http://localhost:9998/api/terminal/stream?cmd=docker+compose+logs+-f+openclaw&token=$KEY"
+
+# Chạy openclaw CLI
+curl -N "http://localhost:9998/api/terminal/stream?cmd=openclaw+models+scan&token=$KEY"
+```
+
+Mỗi event trả về JSON: `{"type":"stdout"|"stderr"|"error"|"exit","text":"...","code":0}`
+
+> **Lưu ý bảo mật:** Token xác thực qua query param `?token=` (do `EventSource` không hỗ trợ header). Chỉ dùng qua HTTPS hoặc mạng nội bộ. Nếu tích hợp vào web app Laravel/React, nên proxy qua server-side để tránh lộ API key.
+
 ## Cấu hình
 
 ### Thứ tự ưu tiên API Key
