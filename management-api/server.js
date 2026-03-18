@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.6';
+const MGMT_VERSION = '1.0.13';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -25,6 +25,11 @@ const AUTH_PROFILES_FILE = `${AUTH_PROFILES_DIR}/auth-profiles.json`;
 // --- GitHub version check (cached) ---
 let _latestVersionCache = { version: null, checkedAt: 0 };
 const VERSION_CHECK_INTERVAL = 60 * 1000; // 1 minute
+
+// --- ChatGPT OAuth (OpenAI Codex) PKCE sessions ---
+const _oauthSessions = {}; // sessionId → { codeVerifier, clientId, agentId, createdAt }
+const OAUTH_SESSION_TTL = 10 * 60 * 1000; // 10 minutes
+let _oauthClientCache = null;
 
 function getLatestVersion() {
   const now = Date.now();
@@ -371,7 +376,7 @@ const PROVIDERS = {
     }
   },
   openai: {
-    name: 'OpenAI',
+    name: 'OpenAI (API Key)',
     envKey: 'OPENAI_API_KEY',
     authProfileProvider: 'openai',
     configTemplate: `${TEMPLATES_DIR}/openai.json`,
@@ -388,6 +393,25 @@ const PROVIDERS = {
       { id: 'o4-mini', name: 'o4-mini' }
     ],
     testFn: (apiKey) => testBearerModels('https://api.openai.com/v1/models', apiKey)
+  },
+  'openai-codex': {
+    name: 'ChatGPT OAuth (Codex)',
+    envKey: null,              // No API key — uses OAuth token from auth-profiles.json
+    authProfileProvider: 'openai-codex',
+    configTemplate: `${TEMPLATES_DIR}/openai-codex.json`,
+    oauthOnly: true,           // Requires ChatGPT OAuth, no API key support
+    knownModels: [
+      { id: 'openai-codex/gpt-5.4',            name: 'GPT-5.4',          default: true },
+      { id: 'openai-codex/gpt-5.4-mini',        name: 'GPT-5.4-Mini' },
+      { id: 'openai-codex/gpt-5.3-codex',       name: 'GPT-5.3-Codex' },
+      { id: 'openai-codex/gpt-5.3-codex-spark', name: 'GPT-5.3-Codex-Spark' },
+      { id: 'openai-codex/gpt-5.2-codex',       name: 'GPT-5.2-Codex' },
+      { id: 'openai-codex/gpt-5.2',             name: 'GPT-5.2' },
+      { id: 'openai-codex/gpt-5.1-codex-max',   name: 'GPT-5.1-Codex-Max' },
+      { id: 'openai-codex/gpt-5.1-codex-mini',  name: 'GPT-5.1-Codex-Mini' },
+      { id: 'openai-codex/gpt-5.1',             name: 'GPT-5.1' }
+    ],
+    testFn: () => false  // OAuth token — cannot test with static key
   },
   google: {
     name: 'Google Gemini',
@@ -553,6 +577,163 @@ const CHANNEL_MAP = {
   zalo:     { envKey: 'ZALO_BOT_TOKEN',      configKey: 'zalo',     tokenField: 'botToken' }
 };
 
+// =============================================================================
+// ChatGPT OAuth (OpenAI Codex) — PKCE OAuth 2.0 Helpers
+// Constants extracted from @mariozechner/pi-ai/dist/utils/oauth/openai-codex.js
+// =============================================================================
+const OPENAI_OAUTH_CLIENT_ID  = 'app_EMoamEEZ73f0CkXaXp7hrann';
+const OPENAI_OAUTH_TOKEN_URL  = 'https://auth.openai.com/oauth/token';
+const OPENAI_OAUTH_AUTH_URL   = 'https://auth.openai.com/oauth/authorize';
+const OPENAI_OAUTH_REDIRECT   = 'http://localhost:1455/auth/callback';
+const OPENAI_OAUTH_SCOPE      = 'openid profile email offline_access';
+const OPENAI_OAUTH_PROFILE    = 'openai-codex'; // provider key used by openclaw
+
+function pkceVerifier() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+function pkceChallenge(verifier) {
+  return crypto.createHash('sha256').update(verifier).digest('base64url');
+}
+
+// Decode JWT payload to extract accountId / email (no signature verification needed)
+function decodeJwtPayload(token) {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  } catch { return null; }
+}
+
+// Exchange authorization code for tokens using curl
+function exchangeOAuthCode(code, codeVerifier) {
+  const tmpFile = `/tmp/openclaw-oauth-${crypto.randomBytes(8).toString('hex')}.dat`;
+  try {
+    const params = [
+      `grant_type=authorization_code`,
+      `client_id=${encodeURIComponent(OPENAI_OAUTH_CLIENT_ID)}`,
+      `code=${encodeURIComponent(code)}`,
+      `code_verifier=${encodeURIComponent(codeVerifier)}`,
+      `redirect_uri=${encodeURIComponent(OPENAI_OAUTH_REDIRECT)}`
+    ].join('&');
+    fs.writeFileSync(tmpFile, params, 'utf8');
+    const result = shell(
+      `curl -sf --max-time 30 -X POST '${OPENAI_OAUTH_TOKEN_URL}' \
+        -H 'Content-Type: application/x-www-form-urlencoded' \
+        --data-binary @${tmpFile}`,
+      35000
+    );
+    return JSON.parse(result);
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch {}
+  }
+}
+
+// Store OAuth tokens in auth-profiles.json using openclaw's exact credential format
+// Fields: { type, provider, access, refresh, expires (ms), accountId }
+// Profile key: "openai-codex:<email|default>"
+function storeOAuthTokens(tokens, agentId = 'main') {
+  const data = readAgentAuth(agentId);
+  data.profiles = data.profiles || {};
+
+  // Extract accountId and email from JWT
+  const JWT_CLAIM = 'https://api.openai.com/auth';
+  const payload = decodeJwtPayload(tokens.access);
+  const accountId = payload?.[JWT_CLAIM]?.chatgpt_account_id || null;
+  const email = (typeof payload?.email === 'string' && payload.email.trim()) ? payload.email.trim() : null;
+
+  const profileKey = `${OPENAI_OAUTH_PROFILE}:${email || 'default'}`;
+
+  // Remove any old profile keys for this provider
+  for (const k of Object.keys(data.profiles)) {
+    if (k.startsWith(`${OPENAI_OAUTH_PROFILE}:`)) delete data.profiles[k];
+  }
+  // Also remove old incorrect key from previous management API versions
+  delete data.profiles['openai:oauth'];
+
+  data.profiles[profileKey] = {
+    type: 'oauth',
+    provider: OPENAI_OAUTH_PROFILE,
+    access: tokens.access,
+    refresh: tokens.refresh,
+    expires: tokens.expires,  // milliseconds (Date.now() + expires_in*1000)
+    accountId
+  };
+  writeAgentAuth(agentId, data);
+  return { profileKey, accountId, email };
+}
+
+// Refresh token — returns same shape as exchangeOAuthCode for storeOAuthTokens
+function refreshOAuthToken(refreshToken) {
+  const tmpFile = `/tmp/openclaw-oauth-refresh-${crypto.randomBytes(8).toString('hex')}.dat`;
+  try {
+    const params = [
+      `grant_type=refresh_token`,
+      `client_id=${encodeURIComponent(OPENAI_OAUTH_CLIENT_ID)}`,
+      `refresh_token=${encodeURIComponent(refreshToken)}`
+    ].join('&');
+    fs.writeFileSync(tmpFile, params, 'utf8');
+    const result = shell(
+      `curl -sf --max-time 30 -X POST '${OPENAI_OAUTH_TOKEN_URL}' \
+        -H 'Content-Type: application/x-www-form-urlencoded' \
+        --data-binary @${tmpFile}`,
+      35000
+    );
+    const raw = JSON.parse(result);
+    // Normalize to openclaw's field format
+    if (!raw.access_token) return null;
+    return {
+      access: raw.access_token,
+      refresh: raw.refresh_token,
+      expires: typeof raw.expires_in === 'number' ? Date.now() + raw.expires_in * 1000 : null
+    };
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch {}
+  }
+}
+
+// Get stored OAuth profile for an agent (searches for openai-codex:* key)
+function getOAuthProfile(agentId = 'main') {
+  const data = readAgentAuth(agentId);
+  const profiles = data.profiles || {};
+  for (const [k, v] of Object.entries(profiles)) {
+    if (k.startsWith(`${OPENAI_OAUTH_PROFILE}:`) && v && v.access) return { key: k, ...v };
+  }
+  return null;
+}
+
+// Attempt to refresh tokens for a single agent. Returns 'refreshed' | 'skipped' | 'error'
+function tryRefreshAgent(agentId) {
+  try {
+    const profile = getOAuthProfile(agentId);
+    if (!profile || !profile.refresh) return 'skipped';
+
+    const now = Date.now();
+    // expires is in milliseconds; refresh if < 10 min remaining or expired
+    const needsRefresh = !profile.expires || (profile.expires - now) < 600000;
+    if (!needsRefresh) return 'skipped';
+
+    const tokens = refreshOAuthToken(profile.refresh);
+    if (!tokens || !tokens.access) return 'error';
+
+    storeOAuthTokens(tokens, agentId);
+    const remaining = tokens.expires ? Math.round((tokens.expires - Date.now()) / 1000) : '?';
+    console.log(`[OAuth] Refreshed token for agent "${agentId}" (expires in ${remaining}s)`);
+    return 'refreshed';
+  } catch (e) {
+    console.error(`[OAuth] Auto-refresh failed for agent "${agentId}": ${e.message}`);
+    return 'error';
+  }
+}
+
+// Cleanup expired OAuth sessions
+function pruneOAuthSessions() {
+  const now = Date.now();
+  for (const id of Object.keys(_oauthSessions)) {
+    if (now - _oauthSessions[id].createdAt > OAUTH_SESSION_TTL) delete _oauthSessions[id];
+  }
+}
+
 // --- Docker compose helpers ---
 function dockerCompose(cmd, timeout = 60000) {
   return shell(`${COMPOSE_CMD} ${cmd}`, timeout);
@@ -574,6 +755,7 @@ function getContainerStatus() {
 
 function restartContainer(service = 'openclaw') {
   dockerCompose(`up -d ${service}`, 60000);
+  dockerCompose(`restart ${service}`, 60000);
 }
 
 // =============================================================================
@@ -1045,7 +1227,7 @@ const server = http.createServer(async (req, res) => {
 
       // Built-in providers
       for (const [id, p] of Object.entries(PROVIDERS)) {
-        const envVal = getEnvValue(p.envKey);
+        const envVal = p.envKey ? getEnvValue(p.envKey) : null;
         const profileVal = getAuthProfileApiKey(p.authProfileProvider);
         const val = envVal || profileVal;
 
@@ -1125,10 +1307,16 @@ const server = http.createServer(async (req, res) => {
 
       const apiKeys = {};
       for (const [id, p] of Object.entries(PROVIDERS)) {
-        const envVal = getEnvValue(p.envKey);
-        const profileVal = getAuthProfileApiKey(p.authProfileProvider);
-        const val = envVal || profileVal;
-        apiKeys[id] = val ? sanitizeKey(val) : null;
+        if (p.oauthOnly) {
+          // OAuth-only provider — show OAuth status instead of API key
+          const oauthProfile = getOAuthProfile('main');
+          apiKeys[id] = oauthProfile ? 'oauth:active' : null;
+        } else {
+          const envVal = p.envKey ? getEnvValue(p.envKey) : null;
+          const profileVal = getAuthProfileApiKey(p.authProfileProvider);
+          const val = envVal || profileVal;
+          apiKeys[id] = val ? sanitizeKey(val) : null;
+        }
       }
 
       // Include custom providers (from template files)
@@ -1258,10 +1446,13 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Write auth-profiles.json if there's an API key in env for this provider
-      const authProvider = providerConfig.authProfileProvider;
-      const existingKey = getEnvValue(providerConfig.envKey);
-      if (existingKey) {
-        setAuthProfileApiKey(authProvider, existingKey);
+      // Skip for oauth-only providers (e.g. openai-codex uses OAuth token, not API key)
+      if (!providerConfig.oauthOnly) {
+        const authProvider = providerConfig.authProfileProvider;
+        const existingKey = getEnvValue(providerConfig.envKey);
+        if (existingKey) {
+          setAuthProfileApiKey(authProvider, existingKey);
+        }
       }
 
       writeConfig(config);
@@ -2387,6 +2578,207 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
+  // POST /api/config/chatgpt-oauth/start — Bat dau ChatGPT OAuth flow
+  // Returns: { sessionId, oauthUrl } — user mo oauthUrl trong browser
+  // =========================================================================
+  if (route(req, 'POST', '/api/config/chatgpt-oauth/start')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const agentId = (body.agentId && isValidAgentId(body.agentId)) ? body.agentId : 'main';
+
+      const codeVerifier = pkceVerifier();
+      const codeChallenge = pkceChallenge(codeVerifier);
+      const state = crypto.randomBytes(16).toString('hex');
+      const sessionId = crypto.randomBytes(16).toString('hex');
+
+      const params = new URLSearchParams({
+        response_type: 'code',
+        client_id: OPENAI_OAUTH_CLIENT_ID,
+        redirect_uri: OPENAI_OAUTH_REDIRECT,
+        scope: OPENAI_OAUTH_SCOPE,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256',
+        state,
+        id_token_add_organizations: 'true',
+        codex_cli_simplified_flow: 'true',
+        originator: 'pi'
+      });
+      const oauthUrl = `${OPENAI_OAUTH_AUTH_URL}?${params.toString()}`;
+
+      pruneOAuthSessions();
+      _oauthSessions[sessionId] = { codeVerifier, state, agentId, createdAt: Date.now() };
+
+      const codexModels = PROVIDERS['openai-codex'].knownModels;
+      return json(res, 200, {
+        ok: true,
+        sessionId,
+        oauthUrl,
+        models: codexModels,
+        defaultModel: codexModels.find(m => m.default)?.id || codexModels[0].id,
+        instructions: 'Open oauthUrl in browser. After login, copy the full redirect URL (localhost:1455/auth/callback?code=...) and POST to /api/config/chatgpt-oauth/complete with { sessionId, redirectUrl, model? }',
+        sessionExpiresIn: OAUTH_SESSION_TTL / 1000
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/config/chatgpt-oauth/complete — Hoan thanh OAuth, luu tokens
+  // Body: { sessionId, redirectUrl, model?, switchProvider? }
+  // redirectUrl: full localhost:1455/auth/callback?code=...&state=... URL
+  // =========================================================================
+  if (route(req, 'POST', '/api/config/chatgpt-oauth/complete')) {
+    try {
+      const body = await parseBody(req);
+      const { sessionId, redirectUrl } = body;
+
+      if (!sessionId) return json(res, 400, { ok: false, error: 'Missing sessionId' });
+      if (!redirectUrl) return json(res, 400, { ok: false, error: 'Missing redirectUrl' });
+
+      pruneOAuthSessions();
+      const session = _oauthSessions[sessionId];
+      if (!session) return json(res, 400, { ok: false, error: 'Session not found or expired. Call /start again.' });
+
+      // Parse authorization code (flexible: full URL, code=... query, or raw code)
+      let code, returnedState;
+      const trimmed = redirectUrl.trim();
+      try {
+        // Try full URL first
+        const u = new URL(trimmed.startsWith('http') ? trimmed : 'http://localhost/?' + trimmed);
+        code = u.searchParams.get('code') || undefined;
+        returnedState = u.searchParams.get('state') || undefined;
+      } catch {
+        // Fallback: raw code
+        code = trimmed.includes('#') ? trimmed.split('#')[0] : trimmed;
+      }
+      if (!code) return json(res, 400, { ok: false, error: 'No "code" found in redirectUrl' });
+
+      // Validate state if present
+      if (returnedState && returnedState !== session.state) {
+        delete _oauthSessions[sessionId];
+        return json(res, 400, { ok: false, error: 'State mismatch — possible CSRF. Start a new session.' });
+      }
+
+      // Exchange code for tokens
+      let raw;
+      try {
+        raw = exchangeOAuthCode(code, session.codeVerifier);
+      } catch (e) {
+        return json(res, 502, { ok: false, error: 'Token exchange failed: ' + e.message });
+      }
+      if (!raw || !raw.access_token) {
+        return json(res, 502, { ok: false, error: 'Token exchange failed: no access_token in response', details: raw });
+      }
+
+      // Normalize to openclaw's field format (access/refresh/expires in ms)
+      const tokens = {
+        access: raw.access_token,
+        refresh: raw.refresh_token,
+        expires: typeof raw.expires_in === 'number' ? Date.now() + raw.expires_in * 1000 : null
+      };
+
+      // Store tokens in auth-profiles.json using openclaw's exact format
+      const stored = storeOAuthTokens(tokens, session.agentId);
+      delete _oauthSessions[sessionId];
+
+      // Switch provider to openai-codex (default: true unless switchProvider=false)
+      const shouldSwitch = body.switchProvider !== false;
+      let switchedModel = null;
+      if (shouldSwitch) {
+        try {
+          const templatePath = PROVIDERS['openai-codex'].configTemplate;
+          const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+          let config;
+          try { config = readConfig(); } catch { config = {}; }
+          const finalModel = body.model || template.agents?.defaults?.model?.primary || 'openai-codex/gpt-5.4';
+          if (!config.agents) config.agents = template.agents;
+          config.agents.defaults.model.primary = finalModel;
+          const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
+          config.gateway = { ...template.gateway, ...(config.gateway || {}) };
+          config.gateway.auth = { token };
+          config.gateway.controlUi = { ...template.gateway.controlUi, ...(config.gateway.controlUi || {}) };
+          if (!config.browser) config.browser = template.browser;
+          if (template.models) config.models = template.models; else delete config.models;
+          writeConfig(config);
+          restartContainer('openclaw');
+          switchedModel = finalModel;
+        } catch (e) {
+          return json(res, 200, { ok: true, agentId: session.agentId, tokensStored: true, profileKey: stored.profileKey, accountId: stored.accountId, switchedProvider: false, switchError: e.message });
+        }
+      } else {
+        restartContainer('openclaw');
+      }
+
+      return json(res, 200, {
+        ok: true,
+        agentId: session.agentId,
+        tokensStored: true,
+        profileKey: stored.profileKey,
+        accountId: stored.accountId,
+        email: stored.email,
+        switchedProvider: shouldSwitch,
+        model: switchedModel
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/config/chatgpt-oauth/refresh — Manual refresh token
+  // Body: { agentId? }
+  // =========================================================================
+  if (route(req, 'POST', '/api/config/chatgpt-oauth/refresh')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const agentId = (body.agentId && isValidAgentId(body.agentId)) ? body.agentId : 'main';
+
+      const profile = getOAuthProfile(agentId);
+      if (!profile) return json(res, 404, { ok: false, error: `No OAuth token found for agent "${agentId}". Complete OAuth flow first.` });
+      if (!profile.refresh) return json(res, 400, { ok: false, error: 'No refresh token stored. Must re-authenticate via /start + /complete.' });
+
+      const tokens = refreshOAuthToken(profile.refresh);
+      if (!tokens || !tokens.access) {
+        return json(res, 502, { ok: false, error: 'Refresh failed: no access_token in response' });
+      }
+
+      storeOAuthTokens(tokens, agentId);
+      restartContainer('openclaw');
+
+      const expiresInMs = tokens.expires ? tokens.expires - Date.now() : null;
+      return json(res, 200, {
+        ok: true,
+        agentId,
+        expiresIn: expiresInMs ? Math.round(expiresInMs / 1000) : null,
+        expiresAt: tokens.expires || null
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/config/chatgpt-oauth/status — Xem trang thai OAuth token hien tai
+  // =========================================================================
+  if (route(req, 'GET', '/api/config/chatgpt-oauth/status')) {
+    try {
+      const { query } = route(req, 'GET', '/api/config/chatgpt-oauth/status');
+      const agentId = (query && query.agentId && isValidAgentId(query.agentId)) ? query.agentId : 'main';
+      const profile = getOAuthProfile(agentId);
+      pruneOAuthSessions();
+      const now = Date.now();
+      const expires = profile ? profile.expires : null;
+      return json(res, 200, {
+        ok: true,
+        agentId,
+        hasOAuthToken: !!profile,
+        profileKey: profile ? profile.key : null,
+        accountId: profile ? profile.accountId : null,
+        hasRefreshToken: profile ? !!profile.refresh : false,
+        expiresAt: expires,
+        expiresIn: expires ? Math.max(0, Math.round((expires - now) / 1000)) : null,
+        expired: expires ? expires < now : null,
+        activeSessions: Object.keys(_oauthSessions).length
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
   // 404
   // =========================================================================
   json(res, 404, { ok: false, error: 'Not found' });
@@ -2498,6 +2890,34 @@ try {
     try { dockerCompose('up -d openclaw', 60000); } catch {}
   }
 } catch {}
+
+// =============================================================================
+// Auto-refresh OAuth tokens background job (runs every 5 minutes)
+// =============================================================================
+setInterval(() => {
+  try {
+    // Collect all known agent IDs from config + scan agents dir
+    const agentIds = new Set(['main']);
+    try {
+      const config = JSON.parse(fs.readFileSync(`${CONFIG_DIR}/openclaw.json`, 'utf8'));
+      for (const a of (config?.agents?.list || [])) {
+        if (a.id) agentIds.add(a.id);
+      }
+    } catch {}
+    try {
+      for (const d of fs.readdirSync(`${CONFIG_DIR}/agents`)) agentIds.add(d);
+    } catch {}
+
+    let anyRefreshed = false;
+    for (const agentId of agentIds) {
+      const result = tryRefreshAgent(agentId);
+      if (result === 'refreshed') anyRefreshed = true;
+    }
+    if (anyRefreshed) restartContainer('openclaw');
+  } catch (e) {
+    console.error(`[OAuth] Auto-refresh job error: ${e.message}`);
+  }
+}, 5 * 60 * 1000);
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[Management API] Running on http://0.0.0.0:${PORT}`);
