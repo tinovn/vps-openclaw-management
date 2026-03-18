@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.13';
+const MGMT_VERSION = '1.0.14';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -2267,7 +2267,7 @@ const server = http.createServer(async (req, res) => {
       } catch {}
 
       const configTemplates = [
-        'anthropic', 'openai', 'google',
+        'anthropic', 'openai', 'openai-codex', 'google', 'gemini',
         'deepseek', 'groq', 'together', 'mistral', 'xai',
         'cerebras', 'sambanova', 'fireworks', 'cohere',
         'yi', 'baichuan', 'stepfun', 'siliconflow', 'novita', 'openrouter',
@@ -2292,6 +2292,8 @@ const server = http.createServer(async (req, res) => {
       }
 
       const allOk = results.every(r => r.ok);
+      // server.js updated successfully = critical part done, restart regardless of template failures
+      const serverJsOk = results.find(r => r.file === `${MGMT_API_DIR}/server.js`)?.ok;
 
       // --- Migrate .env: ensure NODE_OPTIONS is set (80% of system RAM) ---
       try {
@@ -2330,8 +2332,9 @@ const server = http.createServer(async (req, res) => {
 
       // Restart management API service (systemd sẽ tự start lại với code mới)
       // Dùng exec async để response kịp trả về trước khi process bị kill
-      if (allOk) {
-        json(res, 200, { ok: true, message: 'Update complete. Management API restarting...', files: results, compose: composeResult });
+      if (serverJsOk) {
+        const msg = allOk ? 'Update complete. Management API restarting...' : 'server.js updated (some templates failed). Management API restarting...';
+        json(res, 200, { ok: allOk, message: msg, files: results, compose: composeResult });
         setTimeout(() => {
           try { execSync('systemctl restart openclaw-mgmt', { timeout: 10000 }); } catch {}
         }, 500);
