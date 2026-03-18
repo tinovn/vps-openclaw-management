@@ -6,7 +6,9 @@ Triển khai và quản lý [OpenClaw](https://github.com/openclaw/openclaw) tr�
 
 - **Cài đặt một lệnh** — Tự động thiết lập Docker, OpenClaw, Caddy reverse proxy, tường lửa và fail2ban
 - **Management API** — REST API (cổng 9998) để quản lý từ xa qua HostBill hoặc bất kỳ HTTP client nào
-- **Đa nhà cung cấp AI** — 21 nhà cung cấp có sẵn + hỗ trợ thêm custom provider (OpenAI-compatible)
+- **Đa nhà cung cấp AI** — 22 nhà cung cấp có sẵn + hỗ trợ thêm custom provider (OpenAI-compatible)
+- **ChatGPT OAuth** — Tích hợp OpenAI Codex (gpt-5.4) qua OAuth2 PKCE, tự động refresh token
+- **Đa agent** — Quản lý nhiều agent với model và API key độc lập, routing tin nhắn theo kênh
 - **Kênh nhắn tin** — Tích hợp Telegram, Discord, Slack, Zalo OA
 - **Tự động SSL** — Let's Encrypt qua Caddy, hoặc self-signed cho truy cập bằng IP
 - **Bảo mật** — Tường lửa UFW, fail2ban, xác thực API key với giới hạn tốc độ
@@ -66,7 +68,7 @@ Internet
 ├── config/
 │   ├── openclaw.json               # Cấu hình đang sử dụng
 │   └── agents/main/agent/
-│       └── auth-profiles.json      # Thông tin API key
+│       └── auth-profiles.json      # API key + OAuth token
 └── data/                           # Dữ liệu lưu trữ
 
 /opt/openclaw-mgmt/
@@ -75,7 +77,8 @@ Internet
 /etc/openclaw/config/               # Template cấu hình (chỉ đọc)
 ├── anthropic.json
 ├── openai.json
-└── gemini.json
+├── openai-codex.json
+└── google.json  (và 18 provider khác)
 ```
 
 ## Management API
@@ -92,6 +95,7 @@ Internet
 | `GET` | `/api/system` | Thông tin CPU, bộ nhớ, ổ đĩa, hệ điều hành |
 | `GET` | `/api/version` | Phiên bản image và digest |
 | `GET` | `/api/logs?lines=100&service=openclaw` | Log của container |
+| `POST` | `/api/self-update` | Cập nhật Management API + templates từ GitHub |
 
 ### Quản lý Container
 
@@ -124,7 +128,7 @@ curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" 
   http://localhost:9998/api/config/provider
 ```
 
-21 nhà cung cấp có sẵn: `anthropic`, `openai`, `gemini`, `deepseek`, `groq`, `together`, `mistral`, `xai`, `cerebras`, `sambanova`, `fireworks`, `cohere`, `yi`, `baichuan`, `stepfun`, `siliconflow`, `novita`, `openrouter`, `minimax`, `moonshot`, `zhipu`
+22 nhà cung cấp có sẵn: `anthropic`, `openai`, `openai-codex`, `google`, `deepseek`, `groq`, `together`, `mistral`, `xai`, `cerebras`, `sambanova`, `fireworks`, `cohere`, `yi`, `baichuan`, `stepfun`, `siliconflow`, `novita`, `openrouter`, `minimax`, `moonshot`, `zhipu`
 
 **Đặt API key:**
 
@@ -152,6 +156,90 @@ curl -X DELETE -H "Authorization: Bearer $KEY" \
 ```
 
 Hoạt động cho cả built-in và custom provider. Model do user thêm được lưu trong config, không mất khi restart.
+
+### ChatGPT OAuth (OpenAI Codex)
+
+Xác thực với ChatGPT qua OAuth2 PKCE. Không cần API key — dùng tài khoản ChatGPT trực tiếp. Hỗ trợ các model `openai-codex/gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex`, v.v.
+
+| Phương thức | Endpoint | Mô tả |
+|-------------|----------|-------|
+| `POST` | `/api/config/chatgpt-oauth/start` | Khởi tạo flow — trả về OAuth URL + danh sách model |
+| `POST` | `/api/config/chatgpt-oauth/complete` | Hoàn thành xác thực bằng redirect URL |
+| `POST` | `/api/config/chatgpt-oauth/refresh` | Refresh token thủ công |
+| `GET` | `/api/config/chatgpt-oauth/status` | Trạng thái token hiện tại |
+
+**Bước 1 — Khởi tạo:**
+
+```bash
+curl -X POST -H "Authorization: Bearer $KEY" \
+  http://localhost:9998/api/config/chatgpt-oauth/start
+```
+
+```json
+{
+  "ok": true,
+  "sessionId": "fdd8babd...",
+  "oauthUrl": "https://auth.openai.com/oauth/authorize?...",
+  "models": [
+    { "id": "openai-codex/gpt-5.4", "name": "GPT-5.4", "default": true },
+    { "id": "openai-codex/gpt-5.4-mini", "name": "GPT-5.4-Mini" },
+    { "id": "openai-codex/gpt-5.3-codex", "name": "GPT-5.3-Codex" },
+    { "id": "openai-codex/gpt-5.2-codex", "name": "GPT-5.2-Codex" },
+    { "id": "openai-codex/gpt-5.2", "name": "GPT-5.2" },
+    { "id": "openai-codex/gpt-5.1-codex-max", "name": "GPT-5.1-Codex-Max" },
+    { "id": "openai-codex/gpt-5.1-codex-mini", "name": "GPT-5.1-Codex-Mini" }
+  ],
+  "defaultModel": "openai-codex/gpt-5.4",
+  "sessionExpiresIn": 600
+}
+```
+
+**Bước 2 — User mở `oauthUrl` trong trình duyệt, đăng nhập ChatGPT.**
+Sau khi đăng nhập, trình duyệt redirect về `localhost:1455/auth/callback?code=...`. Copy toàn bộ URL đó.
+
+**Bước 3 — Hoàn thành:**
+
+```bash
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "fdd8babd...",
+    "redirectUrl": "http://localhost:1455/auth/callback?code=ac_xxx&state=...",
+    "model": "openai-codex/gpt-5.4"
+  }' \
+  http://localhost:9998/api/config/chatgpt-oauth/complete
+```
+
+```json
+{
+  "ok": true,
+  "tokensStored": true,
+  "profileKey": "openai-codex:default",
+  "switchedProvider": true,
+  "model": "openai-codex/gpt-5.4"
+}
+```
+
+OpenClaw tự động restart và sẵn sàng sử dụng.
+
+> Token được tự động refresh trước khi hết hạn (kiểm tra mỗi 5 phút, refresh khi còn dưới 10 phút).
+
+**Xem trạng thái OAuth:**
+
+```bash
+curl -H "Authorization: Bearer $KEY" \
+  http://localhost:9998/api/config/chatgpt-oauth/status
+```
+
+```json
+{
+  "ok": true,
+  "hasOAuthToken": true,
+  "profileKey": "openai-codex:default",
+  "hasRefreshToken": true,
+  "expiresIn": 863826,
+  "expired": false
+}
+```
 
 ### Custom Provider
 
@@ -196,6 +284,56 @@ curl -X DELETE -H "Authorization: Bearer $KEY" \
 ```
 
 Khi xoá, nếu model đang dùng thuộc provider bị xoá, hệ thống tự chuyển về `anthropic/claude-sonnet-4-20250514`.
+
+### Đa Agent
+
+Quản lý nhiều agent với cấu hình (model, API key) độc lập nhau.
+
+| Phương thức | Endpoint | Mô tả |
+|-------------|----------|-------|
+| `GET` | `/api/agents` | Danh sách tất cả agents |
+| `POST` | `/api/agents` | Tạo agent mới |
+| `GET` | `/api/agents/:id` | Chi tiết agent |
+| `PUT` | `/api/agents/:id` | Cập nhật agent (tên, model, workspace) |
+| `DELETE` | `/api/agents/:id` | Xoá agent |
+| `PUT` | `/api/agents/:id/default` | Đặt làm agent mặc định |
+| `GET` | `/api/agents/:id/api-key` | Xem API key của agent (đã ẩn) |
+| `PUT` | `/api/agents/:id/api-key` | Đặt API key cho agent |
+
+**Tạo agent mới:**
+
+```bash
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"id":"work","name":"Work Agent","model":"anthropic/claude-sonnet-4-20250514"}' \
+  http://localhost:9998/api/agents
+```
+
+**Đặt API key cho agent:**
+
+```bash
+curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"provider":"anthropic","apiKey":"sk-ant-xxx"}' \
+  http://localhost:9998/api/agents/work/api-key
+```
+
+### Routing Bindings
+
+Định tuyến tin nhắn từ kênh nhắn tin tới agent cụ thể.
+
+| Phương thức | Endpoint | Mô tả |
+|-------------|----------|-------|
+| `GET` | `/api/bindings` | Danh sách tất cả routing bindings |
+| `POST` | `/api/bindings` | Tạo binding mới |
+| `PUT` | `/api/bindings/:index` | Cập nhật binding |
+| `DELETE` | `/api/bindings/:index` | Xoá binding |
+
+**Ví dụ — Route Telegram tới agent "work":**
+
+```bash
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"agentId":"work","match":{"channel":"telegram"}}' \
+  http://localhost:9998/api/bindings
+```
 
 ### Tên miền và SSL
 
@@ -279,42 +417,6 @@ curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json"
   http://localhost:9998/api/cli
 ```
 
-### Terminal GUI
-
-| Phương thức | Endpoint | Mô tả |
-|-------------|----------|-------|
-| `GET` | `/terminal` | Giao diện terminal web (xterm.js) |
-| `GET` | `/api/terminal/stream?cmd=...&token=...` | SSE stream output lệnh theo thời gian thực |
-
-Truy cập `http://<ip>:9998/terminal` để mở terminal trong trình duyệt. Nhập Management API Key và click **Connect**.
-
-**Lệnh được phép:**
-
-| Nhóm | Lệnh |
-|------|------|
-| Docker Compose | `docker compose ps/logs/restart/pull/up/down/exec/stats/images/top` |
-| OpenClaw CLI | `openclaw <cmd>` hoặc `claw <cmd>` |
-| Hệ thống | `df`, `free`, `uptime`, `ps`, `date`, `hostname`, `uname` |
-
-- Hỗ trợ streaming trực tiếp (ví dụ: `docker compose logs -f`)
-- **Ctrl+C** để huỷ lệnh đang chạy, **Ctrl+L** để xoá màn hình
-- Lịch sử lệnh lưu trong localStorage (phím ↑↓)
-- Quick-command bar cho các lệnh thường dùng
-
-**SSE endpoint** (dùng khi tích hợp vào web app khác):
-
-```bash
-# Xem logs container theo thời gian thực
-curl -N "http://localhost:9998/api/terminal/stream?cmd=docker+compose+logs+-f+openclaw&token=$KEY"
-
-# Chạy openclaw CLI
-curl -N "http://localhost:9998/api/terminal/stream?cmd=openclaw+models+scan&token=$KEY"
-```
-
-Mỗi event trả về JSON: `{"type":"stdout"|"stderr"|"error"|"exit","text":"...","code":0}`
-
-> **Lưu ý bảo mật:** Token xác thực qua query param `?token=` (do `EventSource` không hỗ trợ header). Chỉ dùng qua HTTPS hoặc mạng nội bộ. Nếu tích hợp vào web app Laravel/React, nên proxy qua server-side để tránh lộ API key.
-
 ## Cấu hình
 
 ### Thứ tự ưu tiên API Key
@@ -373,9 +475,11 @@ OpenClaw/
 ├── management-api/
 │   └── server.js               # Management API (cổng 9998)
 ├── config/
-│   ├── anthropic.json          # Template cấu hình Anthropic
-│   ├── openai.json             # Template cấu hình OpenAI
-│   └── gemini.json             # Template cấu hình Gemini
+│   ├── anthropic.json          # Template Anthropic
+│   ├── openai.json             # Template OpenAI (API key)
+│   ├── openai-codex.json       # Template OpenAI Codex (OAuth)
+│   ├── google.json             # Template Google Gemini
+│   └── ...                     # 18 providers còn lại
 ├── postman_collection.json     # Bộ sưu tập Postman API
 ├── CLAUDE.md                   # Hướng dẫn cho AI assistant
 └── README.md
