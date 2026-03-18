@@ -5,7 +5,7 @@
 // =============================================================================
 
 const http = require('http');
-const { execSync, exec } = require('child_process');
+const { execSync, exec, spawn } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
@@ -296,6 +296,54 @@ function setAuthProfileApiKey(providerName, apiKey, agentId = 'main') {
 
 function getAuthProfileApiKey(providerName, agentId = 'main') {
   return getAgentApiKey(agentId, providerName);
+}
+
+// --- Terminal command whitelist ---
+function parseTerminalCmd(cmdStr) {
+  // Block shell injection metacharacters
+  if (/[;&|`$(){}\\!'"<>]/.test(cmdStr)) {
+    return { valid: false, error: 'Shell metacharacters not allowed' };
+  }
+  const parts = cmdStr.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { valid: false, error: 'Empty command' };
+  const base = parts[0].toLowerCase();
+
+  // docker compose <subcommand> [args...]
+  if (base === 'docker' && parts[1] === 'compose') {
+    const sub = parts[2];
+    const allowed = ['ps', 'logs', 'restart', 'pull', 'up', 'down', 'exec', 'stats', 'images', 'top', 'config', 'ls'];
+    if (!sub || !allowed.includes(sub)) {
+      return { valid: false, error: 'Allowed docker compose subcommands: ' + allowed.join(', ') };
+    }
+    const rest = parts.slice(2);
+    // Auto-inject -T for exec (no TTY for non-interactive streaming)
+    if (sub === 'exec' && !rest.includes('-T') && !rest.includes('-t')) {
+      rest.splice(1, 0, '-T');
+    }
+    return { valid: true, argv: ['docker', 'compose', '-f', COMPOSE_DIR + '/docker-compose.yml', ...rest] };
+  }
+
+  // openclaw / claw → docker compose exec -T openclaw node dist/index.js <args>
+  if (base === 'openclaw' || base === 'claw') {
+    return {
+      valid: true,
+      argv: ['docker', 'compose', '-f', COMPOSE_DIR + '/docker-compose.yml', 'exec', '-T', 'openclaw', 'node', 'dist/index.js', ...parts.slice(1)]
+    };
+  }
+
+  // Safe system commands
+  const sysMap = {
+    'df':       () => ['df', ...(parts.slice(1).length ? parts.slice(1) : ['-h'])],
+    'free':     () => ['free', ...(parts.slice(1).length ? parts.slice(1) : ['-h'])],
+    'uptime':   () => ['uptime'],
+    'date':     () => ['date'],
+    'uname':    () => ['uname', '-a'],
+    'hostname': () => ['hostname', '-I'],
+    'ps':       () => ['ps', 'aux'],
+  };
+  if (sysMap[base]) return { valid: true, argv: sysMap[base]() };
+
+  return { valid: false, error: 'Command not allowed. Use: docker compose ..., openclaw ..., df, free, uptime, ps, date' };
 }
 
 // --- Route matching ---
@@ -788,6 +836,87 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/login')) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(LOGIN_HTML);
+  }
+
+  // GET /terminal — Serve terminal GUI page (public, auth handled client-side)
+  if (route(req, 'GET', '/terminal')) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(TERMINAL_HTML);
+  }
+
+  // GET /api/terminal/stream — SSE streaming terminal (auth via ?token= query param)
+  if (route(req, 'GET', '/api/terminal/stream')) {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const qToken = (url.searchParams.get('token') || '').trim();
+    const expected = getMgmtApiKey();
+    let authed = false;
+    if (qToken && expected && qToken.length === expected.length) {
+      try { authed = crypto.timingSafeEqual(Buffer.from(qToken), Buffer.from(expected)); } catch {}
+    }
+    if (!authed) {
+      recordFailedAuth(ip);
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+      res.write('data: ' + JSON.stringify({ type: 'error', text: 'Unauthorized' }) + '\n\n');
+      res.write('data: ' + JSON.stringify({ type: 'exit', code: 1 }) + '\n\n');
+      return res.end();
+    }
+
+    const cmdStr = (url.searchParams.get('cmd') || '').trim();
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    if (!cmdStr) {
+      res.write('data: ' + JSON.stringify({ type: 'error', text: 'Missing cmd parameter' }) + '\n\n');
+      res.write('data: ' + JSON.stringify({ type: 'exit', code: 1 }) + '\n\n');
+      return res.end();
+    }
+
+    const parsed = parseTerminalCmd(cmdStr);
+    if (!parsed.valid) {
+      res.write('data: ' + JSON.stringify({ type: 'error', text: parsed.error }) + '\n\n');
+      res.write('data: ' + JSON.stringify({ type: 'exit', code: 1 }) + '\n\n');
+      return res.end();
+    }
+
+    const proc = spawn(parsed.argv[0], parsed.argv.slice(1), {
+      cwd: COMPOSE_DIR,
+      env: { ...process.env, TERM: 'xterm-256color', FORCE_COLOR: '1' },
+    });
+
+    let closed = false;
+    req.on('close', () => {
+      closed = true;
+      try { proc.kill('SIGTERM'); } catch {}
+    });
+
+    proc.stdout.on('data', chunk => {
+      if (!closed) res.write('data: ' + JSON.stringify({ type: 'stdout', text: chunk.toString() }) + '\n\n');
+    });
+
+    proc.stderr.on('data', chunk => {
+      if (!closed) res.write('data: ' + JSON.stringify({ type: 'stderr', text: chunk.toString() }) + '\n\n');
+    });
+
+    proc.on('error', err => {
+      if (!closed) {
+        res.write('data: ' + JSON.stringify({ type: 'error', text: err.message }) + '\n\n');
+        res.write('data: ' + JSON.stringify({ type: 'exit', code: 1 }) + '\n\n');
+        res.end();
+      }
+    });
+
+    proc.on('exit', (code) => {
+      if (!closed) {
+        res.write('data: ' + JSON.stringify({ type: 'exit', code: code !== null ? code : 0 }) + '\n\n');
+        res.end();
+      }
+    });
+
+    return;
   }
 
   // POST /api/auth/login — Validate credentials, return gateway token
@@ -2783,6 +2912,186 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   json(res, 404, { ok: false, error: 'Not found' });
 });
+
+// =============================================================================
+// Terminal GUI HTML Page
+// =============================================================================
+const TERMINAL_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>OpenClaw Terminal</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:#0d1117;color:#c9d1d9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+#layout{display:flex;flex-direction:column;height:100vh}
+#hdr{display:flex;align-items:center;gap:8px;padding:6px 12px;background:#161b22;border-bottom:1px solid #30363d;flex-shrink:0}
+.logo{font-size:15px;font-weight:700;color:#58a6ff;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:#484f58;flex-shrink:0;transition:background .3s}
+.dot.on{background:#3fb950}.dot.off{background:#f85149}
+#tw{display:flex;gap:6px;flex:1;min-width:0}
+#tok{flex:1;min-width:0;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;padding:5px 10px;font-size:13px;outline:none;font-family:monospace}
+#tok:focus{border-color:#58a6ff}
+.hb{padding:5px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap;transition:background .15s}
+.con{background:#238636;color:#fff}.con:hover{background:#2ea043}
+.clr{background:#21262d;color:#8b949e;border:1px solid #30363d}.clr:hover{color:#c9d1d9}
+#qbar{display:flex;align-items:center;gap:4px;padding:5px 12px;background:#0d1117;border-bottom:1px solid #21262d;flex-shrink:0;overflow-x:auto;white-space:nowrap}
+#qbar::-webkit-scrollbar{height:3px}#qbar::-webkit-scrollbar-thumb{background:#30363d;border-radius:2px}
+.ql{font-size:11px;color:#484f58;margin-right:4px}
+.qb{padding:3px 9px;background:#161b22;border:1px solid #21262d;border-radius:4px;color:#8b949e;font-size:12px;cursor:pointer;transition:all .15s}
+.qb:hover{color:#e6edf3;border-color:#58a6ff}
+#tw2{flex:1;overflow:hidden;padding:4px 2px 2px}
+.xterm-viewport::-webkit-scrollbar{width:6px}
+.xterm-viewport::-webkit-scrollbar-thumb{background:#21262d;border-radius:3px}
+</style>
+</head>
+<body>
+<div id="layout">
+  <div id="hdr">
+    <span class="dot" id="dot"></span>
+    <span class="logo">\u{1F980} OpenClaw Terminal</span>
+    <div id="tw">
+      <input type="password" id="tok" placeholder="Management API Key..." autocomplete="off" spellcheck="false">
+      <button class="hb con" onclick="doConnect()">Connect</button>
+      <button class="hb clr" onclick="doClear()">Clear</button>
+    </div>
+  </div>
+  <div id="qbar">
+    <span class="ql">Quick:</span>
+    <button class="qb" onclick="q('docker compose ps')">status</button>
+    <button class="qb" onclick="q('docker compose logs --tail=80 openclaw')">logs</button>
+    <button class="qb" onclick="q('docker compose logs -f openclaw')">logs -f</button>
+    <button class="qb" onclick="q('docker compose restart openclaw')">restart</button>
+    <button class="qb" onclick="q('docker compose pull openclaw')">pull</button>
+    <button class="qb" onclick="q('docker compose up -d')">up -d</button>
+    <button class="qb" onclick="q('docker compose down')">down</button>
+    <button class="qb" onclick="q('docker compose stats --no-stream openclaw')">stats</button>
+    <button class="qb" onclick="q('df -h')">df</button>
+    <button class="qb" onclick="q('free -h')">free</button>
+    <button class="qb" onclick="q('uptime')">uptime</button>
+    <button class="qb" onclick="q('openclaw models scan')">models scan</button>
+    <button class="qb" onclick="q('openclaw channels list')">channels</button>
+    <button class="qb" onclick="q('openclaw version')">version</button>
+  </div>
+  <div id="tw2"><div id="terminal"></div></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<script>
+var TK='oc_mgmt_token', HK='oc_term_hist';
+var term, fit, buf='', hist=[], hidx=-1, running=false, sse=null, tok='', conn=false;
+try{hist=JSON.parse(localStorage.getItem(HK)||'[]');}catch(e){}
+try{tok=localStorage.getItem(TK)||'';}catch(e){}
+
+function initTerm(){
+  term=new Terminal({
+    cursorBlink:true,
+    fontFamily:'"Cascadia Code","JetBrains Mono","Courier New",monospace',
+    fontSize:14,lineHeight:1.3,scrollback:5000,
+    theme:{
+      background:'#0d1117',foreground:'#c9d1d9',cursor:'#58a6ff',
+      selectionBackground:'#264f78',
+      black:'#484f58',red:'#f85149',green:'#3fb950',yellow:'#d29922',
+      blue:'#58a6ff',magenta:'#bc8cff',cyan:'#76e3ea',white:'#b1bac4',
+      brightBlack:'#6e7681',brightRed:'#ff7b72',brightGreen:'#56d364',
+      brightYellow:'#e3b341',brightBlue:'#79c0ff',brightMagenta:'#d2a8ff',
+      brightCyan:'#87deea',brightWhite:'#f0f6fc'
+    }
+  });
+  fit=new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(document.getElementById('terminal'));
+  fit.fit();
+  window.addEventListener('resize',function(){fit.fit();});
+  term.onKey(function(e){handleKey(e.key,e.domEvent);});
+}
+
+function handleKey(key,e){
+  if(running){
+    if(e.ctrlKey&&e.key==='c'){killSSE();term.write('^C\\r\\n');prompt();}
+    return;
+  }
+  if(e.ctrlKey){if(e.key==='l'){term.clear();prompt();}return;}
+  if(e.key==='Enter'){
+    var cmd=buf.trim();term.write('\\r\\n');buf='';hidx=-1;
+    if(cmd){
+      if(!hist.length||hist[0]!==cmd){hist.unshift(cmd);if(hist.length>200)hist.pop();try{localStorage.setItem(HK,JSON.stringify(hist));}catch(ex){}}
+      execCmd(cmd);
+    }else{prompt();}
+  }else if(e.key==='Backspace'){
+    if(buf.length){buf=buf.slice(0,-1);term.write('\\b \\b');}
+  }else if(e.key==='ArrowUp'){
+    if(hidx<hist.length-1){hidx++;clearBuf();buf=hist[hidx];term.write(buf);}
+  }else if(e.key==='ArrowDown'){
+    if(hidx>0){hidx--;clearBuf();buf=hist[hidx];term.write(buf);}
+    else if(hidx===0){hidx=-1;clearBuf();}
+  }else if(!e.altKey&&!e.metaKey&&key.length===1){buf+=key;term.write(key);}
+}
+
+function clearBuf(){if(buf.length)term.write('\\b \\b'.repeat(buf.length));buf='';}
+function prompt(){if(conn)term.write('\\x1b[32m$\\x1b[0m ');}
+
+function killSSE(){if(sse){try{sse.close();}catch(e){}sse=null;}running=false;}
+
+function execCmd(cmd){
+  if(!conn||!tok){term.write('\\x1b[31mNot connected\\x1b[0m\\r\\n');prompt();return;}
+  running=true;
+  sse=new EventSource('/api/terminal/stream?cmd='+encodeURIComponent(cmd)+'&token='+encodeURIComponent(tok));
+  sse.onmessage=function(ev){
+    try{
+      var d=JSON.parse(ev.data);
+      if(d.type==='stdout')term.write(d.text.replace(/\\n/g,'\\r\\n').replace(/\\r\\r\\n/g,'\\r\\n'));
+      else if(d.type==='stderr')term.write('\\x1b[33m'+d.text.replace(/\\n/g,'\\r\\n')+'\\x1b[0m');
+      else if(d.type==='error'){term.write('\\x1b[31m'+d.text+'\\x1b[0m\\r\\n');killSSE();prompt();}
+      else if(d.type==='exit'){if(d.code)term.write('\\r\\n\\x1b[2m[exit '+d.code+']\\x1b[0m');term.write('\\r\\n');killSSE();prompt();}
+    }catch(ex){}
+  };
+  sse.onerror=function(){term.write('\\r\\n\\x1b[31m[stream error]\\x1b[0m\\r\\n');killSSE();prompt();};
+}
+
+function doConnect(){
+  var v=document.getElementById('tok').value.trim();
+  if(v){tok=v;try{localStorage.setItem(TK,v);}catch(e){}}
+  if(!tok){term.write('\\x1b[31mEnter Management API Key\\x1b[0m\\r\\n');return;}
+  fetch('/api/status',{headers:{Authorization:'Bearer '+tok}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.status||d.ok!==false){
+        conn=true;
+        document.getElementById('dot').className='dot on';
+        term.write('\\x1b[32mConnected!\\x1b[0m  (Ctrl+C = cancel, Ctrl+L = clear)\\r\\n\\r\\n');
+        prompt();
+      }else{
+        term.write('\\x1b[31mAuth failed: '+(d.error||'check your key')+'\\x1b[0m\\r\\n');
+        document.getElementById('dot').className='dot off';
+      }
+    }).catch(function(){
+      term.write('\\x1b[31mConnection error\\x1b[0m\\r\\n');
+      document.getElementById('dot').className='dot off';
+    });
+}
+
+function doClear(){if(term){term.clear();if(conn)prompt();}}
+
+function q(cmd){
+  if(!conn){term.write('\\x1b[33mConnect first (enter API key + click Connect)\\x1b[0m\\r\\n');return;}
+  if(running)killSSE();
+  clearBuf();
+  term.write('\\x1b[32m$\\x1b[0m '+cmd+'\\r\\n');
+  execCmd(cmd);
+}
+
+window.addEventListener('DOMContentLoaded',function(){
+  initTerm();
+  if(tok)document.getElementById('tok').placeholder='Key saved \u2014 click Connect';
+  term.write('\\x1b[1;34m OpenClaw Terminal\\x1b[0m\\r\\n');
+  term.write('\\x1b[2m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\\x1b[0m\\r\\n');
+  term.write('\\x1b[2m Allowed cmds: docker compose ..., openclaw ...\\x1b[0m\\r\\n');
+  term.write('\\x1b[2m               df, free, uptime, ps, date\\x1b[0m\\r\\n\\r\\n');
+  term.write('\\x1b[2m Enter API key above and click Connect\\x1b[0m\\r\\n\\r\\n');
+});
+</script>
+</body>
+</html>`;
 
 // =============================================================================
 // Login HTML Page
