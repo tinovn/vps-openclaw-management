@@ -1,133 +1,105 @@
-# Tích hợp Terminal vào Laravel
+# Tích hợp Terminal Widget vào Laravel
 
-Hướng dẫn dành cho developer muốn nhúng terminal OpenClaw vào website Laravel (Blade, Livewire, v.v.).
+Component nhỏ nhúng vào hệ thống Laravel. `mgmt_url` và `mgmt_key` truyền vào từ component cha — mỗi user có VPS và key riêng.
 
 ---
 
-## Tổng quan
-
-Management API cung cấp 2 endpoint cho terminal:
-
-| Endpoint | Mô tả |
-|----------|-------|
-| `GET /terminal` | Trang terminal web standalone (xterm.js), dùng nhanh không cần code |
-| `GET /api/terminal/stream?cmd=...&token=...` | SSE stream — output lệnh theo thời gian thực |
-
-**Kiến trúc bảo mật khi tích hợp:**
+## Kiến trúc bảo mật
 
 ```
-Browser
-  │  (session cookie Laravel — không cần API key)
+Component cha
+  │  :mgmt-url="$user->vps_url"  :mgmt-key="$user->mgmt_key"
   ▼
-Laravel Route  /terminal/stream?cmd=...
-  │  (thêm Bearer token server-side, không lộ ra browser)
+TerminalWidget::mount($mgmtUrl, $mgmtKey)
+  │  session['oc_term_<uuid>'] = ['url' => ..., 'key' => ...]
+  │  trả ra $sessionKey = uuid  ← an toàn, chỉ là định danh
   ▼
-Management API  :9998/api/terminal/stream?cmd=...&token=<KEY>
-  │
+Browser EventSource  →  /terminal/stream?session=<uuid>&cmd=...
   ▼
-docker compose / openclaw CLI
+TerminalProxyController  →  lấy url/key từ session  →  proxy tới VPS
 ```
 
-> API key (`OPENCLAW_MGMT_API_KEY`) chỉ tồn tại trong `.env` của Laravel, **không bao giờ xuất hiện trong HTML hoặc HTTP response trả về browser**.
+> `mgmt_key` được lưu **server-side trong session**, không bao giờ xuất hiện trong HTML hay JS trả về browser.
 
 ---
 
 ## SSE Event Format
 
-Mỗi message từ `/api/terminal/stream` là một SSE event dạng:
-
 ```
 data: {"type":"stdout","text":"NAME   STATUS\n"}
-
 data: {"type":"stderr","text":"Warning: ...\n"}
-
 data: {"type":"error","text":"Command not allowed"}
-
 data: {"type":"exit","code":0}
 ```
-
-| `type` | Ý nghĩa |
-|--------|---------|
-| `stdout` | Output bình thường của lệnh |
-| `stderr` | Output lỗi / cảnh báo |
-| `error` | Lỗi xác thực hoặc lệnh không được phép |
-| `exit` | Lệnh kết thúc, `code` là exit code (0 = thành công) |
 
 ---
 
 ## Lệnh được phép
 
-| Nhóm | Cú pháp |
-|------|---------|
-| Docker Compose | `docker compose ps \| logs \| restart \| pull \| up \| down \| exec \| stats \| images \| top \| config` |
-| OpenClaw CLI | `openclaw <cmd>` hoặc `claw <cmd>` |
+| Nhóm | Lệnh |
+|------|------|
+| Docker Compose | `docker compose ps/logs/restart/pull/up/down/exec/stats/images/top/config` |
+| OpenClaw CLI | `openclaw <cmd>` · `claw <cmd>` |
 | Hệ thống | `df` · `free` · `uptime` · `ps` · `date` · `hostname` · `uname` |
 
 Shell metacharacter bị block: `` ; & | ` $ ( ) { } \ ! ' " < > ``
 
 ---
 
-## Bước 1 — Cấu hình Laravel
-
-### `.env`
-
-```env
-OPENCLAW_MGMT_API_URL=http://103.142.25.188:9998
-OPENCLAW_MGMT_API_KEY=your_64char_hex_key
-```
-
-### `config/openclaw.php`
+## 1. Route
 
 ```php
-<?php
-return [
-    'mgmt_api_url' => env('OPENCLAW_MGMT_API_URL', 'http://127.0.0.1:9998'),
-    'mgmt_api_key' => env('OPENCLAW_MGMT_API_KEY'),
+// routes/web.php
+use App\Http\Controllers\TerminalProxyController;
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/terminal/stream', [TerminalProxyController::class, 'stream'])
+        ->name('terminal.stream');
+});
+```
+
+**Exempt CSRF** — `EventSource` là GET và không gửi được CSRF token:
+
+```php
+// app/Http/Middleware/VerifyCsrfToken.php
+protected $except = [
+    'terminal/stream',
 ];
 ```
 
 ---
 
-## Bước 2 — Proxy Controller
-
-Tạo `app/Http/Controllers/TerminalProxyController.php`:
+## 2. Proxy Controller
 
 ```php
 <?php
+// app/Http/Controllers/TerminalProxyController.php
+
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 
 class TerminalProxyController extends Controller
 {
-    /**
-     * Kiểm tra kết nối tới Management API.
-     */
-    public function status()
-    {
-        $res = Http::withToken(config('openclaw.mgmt_api_key'))
-            ->timeout(5)
-            ->get(config('openclaw.mgmt_api_url') . '/api/status');
-
-        return response()->json($res->json(), $res->status());
-    }
-
-    /**
-     * Proxy SSE stream — thêm Bearer token server-side.
-     */
     public function stream(Request $request)
     {
+        // Lấy credentials từ session — key thật không đi qua browser
+        $sessionKey = $request->query('session', '');
+        $creds = session('oc_term_' . $sessionKey);
+
+        if (!$creds || empty($creds['url']) || empty($creds['key'])) {
+            abort(403, 'Invalid or expired terminal session');
+        }
+
         $cmd = $request->query('cmd', '');
 
-        // Validate (defence-in-depth — Management API cũng validate)
         if (empty($cmd) || preg_match('/[;&|`$(){}\\\\!\'"<>]/', $cmd)) {
             abort(400, 'Invalid command');
         }
 
-        $upstreamUrl = config('openclaw.mgmt_api_url')
+        $upstreamUrl = rtrim($creds['url'], '/')
             . '/api/terminal/stream?cmd=' . urlencode($cmd)
-            . '&token=' . urlencode(config('openclaw.mgmt_api_key'));
+            . '&token=' . urlencode($creds['key']);
 
         return response()->stream(function () use ($upstreamUrl) {
             $ch = curl_init($upstreamUrl);
@@ -156,49 +128,23 @@ class TerminalProxyController extends Controller
 
 ---
 
-## Bước 3 — Routes
-
-### `routes/web.php`
-
-```php
-use App\Http\Controllers\TerminalProxyController;
-
-Route::middleware(['auth'])->group(function () {
-    Route::get('/terminal/status', [TerminalProxyController::class, 'status'])
-        ->name('terminal.status');
-
-    Route::get('/terminal/stream', [TerminalProxyController::class, 'stream'])
-        ->name('terminal.stream');
-});
-```
-
-### Exempt CSRF — `app/Http/Middleware/VerifyCsrfToken.php`
-
-`EventSource` là GET request và không thể gửi CSRF token, nên cần exempt:
-
-```php
-protected $except = [
-    'terminal/stream',
-];
-```
-
----
-
-## Bước 4 — Livewire Component
-
-### `app/Livewire/TerminalWidget.php`
+## 3. Livewire Component
 
 ```php
 <?php
+// app/Livewire/TerminalWidget.php
+
 namespace App\Livewire;
 
 use Livewire\Component;
-use Illuminate\Support\Facades\Http;
+use Livewire\Attributes\Locked;
+use Illuminate\Support\Str;
 
 class TerminalWidget extends Component
 {
-    public bool   $connected  = false;
-    public string $statusText = '';
+    // sessionKey là UUID — an toàn để expose ra JS
+    #[Locked]
+    public string $sessionKey = '';
 
     public array $quickCmds = [
         ['label' => 'status',      'cmd' => 'docker compose ps'],
@@ -217,17 +163,21 @@ class TerminalWidget extends Component
         ['label' => 'version',     'cmd' => 'openclaw version'],
     ];
 
-    public function mount(): void
+    /**
+     * @param string $mgmtUrl  VPS Management API URL, vd: http://103.142.25.188:9998
+     * @param string $mgmtKey  Management API key của user
+     */
+    public function mount(string $mgmtUrl, string $mgmtKey): void
     {
-        try {
-            $res = Http::withToken(config('openclaw.mgmt_api_key'))
-                ->timeout(3)
-                ->get(config('openclaw.mgmt_api_url') . '/api/status');
-            $this->connected  = $res->successful();
-            $this->statusText = $res->successful() ? 'Connected' : 'Unreachable';
-        } catch (\Throwable) {
-            $this->statusText = 'Unreachable';
-        }
+        $this->sessionKey = (string) Str::uuid();
+
+        // Lưu credentials vào session — không bao giờ ra browser
+        session([
+            'oc_term_' . $this->sessionKey => [
+                'url' => $mgmtUrl,
+                'key' => $mgmtKey,
+            ],
+        ]);
     }
 
     public function render()
@@ -237,28 +187,23 @@ class TerminalWidget extends Component
 }
 ```
 
-### `resources/views/livewire/terminal-widget.blade.php`
+---
+
+## 4. Blade View
 
 ```blade
-<div class="flex flex-col bg-[#0d1117] rounded-xl overflow-hidden border border-[#30363d]"
-     style="height: 600px">
+{{-- resources/views/livewire/terminal-widget.blade.php --}}
 
-    {{-- Header --}}
-    <div class="flex items-center gap-2 px-4 py-2 bg-[#161b22] border-b border-[#30363d] shrink-0">
-        <span class="w-2 h-2 rounded-full {{ $connected ? 'bg-green-500' : 'bg-red-500' }}"></span>
-        <span class="text-sm font-semibold text-[#58a6ff]">🦞 OpenClaw Terminal</span>
-        <span class="text-xs text-[#8b949e] ml-1">{{ $statusText }}</span>
-        <button wire:click="mount" class="ml-auto text-xs text-[#484f58] hover:text-[#8b949e]"
-                title="Refresh status">↺</button>
-    </div>
+<div class="flex flex-col bg-[#0d1117] rounded-xl overflow-hidden border border-[#30363d]"
+     style="height:560px">
 
     {{-- Quick commands --}}
-    <div id="oc-qbar"
-         class="flex items-center gap-1 px-3 py-1.5 bg-[#0d1117] border-b border-[#21262d] shrink-0 overflow-x-auto">
+    <div id="oc-qbar-{{ $sessionKey }}"
+         class="flex items-center gap-1 px-3 py-1.5 bg-[#161b22] border-b border-[#21262d] shrink-0 overflow-x-auto">
         <span class="text-[11px] text-[#484f58] mr-1 shrink-0">Quick:</span>
         @foreach($quickCmds as $qc)
-            <button class="oc-qbtn shrink-0 px-2 py-0.5 bg-[#161b22] border border-[#21262d]
-                           rounded text-[#8b949e] text-xs hover:text-[#e6edf3] hover:border-[#58a6ff]
+            <button class="oc-qbtn shrink-0 px-2 py-0.5 bg-[#0d1117] border border-[#21262d]
+                           rounded text-[#8b949e] text-xs hover:text-white hover:border-[#58a6ff]
                            transition-colors cursor-pointer"
                     data-cmd="{{ $qc['cmd'] }}">
                 {{ $qc['label'] }}
@@ -266,42 +211,41 @@ class TerminalWidget extends Component
         @endforeach
     </div>
 
-    {{--
-        wire:ignore — QUAN TRỌNG:
-        Ngăn Livewire diff/patch vùng này khi re-render.
-        xterm.js tự quản lý DOM bên trong, nếu Livewire động vào sẽ crash terminal.
-    --}}
+    {{-- wire:ignore — bắt buộc, ngăn Livewire xoá DOM của xterm.js --}}
     <div wire:ignore class="flex-1 overflow-hidden p-1">
-        <div id="oc-terminal"></div>
+        <div id="oc-terminal-{{ $sessionKey }}"></div>
     </div>
 
-    {{-- Inject stream URL (không có API key) --}}
+    {{-- Chỉ truyền sessionKey (UUID) ra JS — không có key thật --}}
     @script
     <script>
-        window._ocStreamUrl = @json(route('terminal.stream'));
-        initOcTerminal();
+        initOcTerminal({
+            termId:     'oc-terminal-{{ $sessionKey }}',
+            qbarId:     'oc-qbar-{{ $sessionKey }}',
+            streamUrl:  @json(route('terminal.stream')),
+            sessionKey: @json($sessionKey),
+        });
     </script>
     @endscript
 
 </div>
 ```
 
-> **Lưu ý `wire:ignore`**: bắt buộc phải có. Nếu thiếu, mỗi khi Livewire re-render (ví dụ sau `wire:click`) sẽ xoá sạch nội dung terminal.
+---
 
-### `resources/js/terminal-widget.js`
-
-File này load xterm.js từ CDN rồi khởi tạo terminal. Import vào `app.js` hoặc dùng `@vite`:
+## 5. JavaScript
 
 ```js
 // resources/js/terminal-widget.js
+// Hỗ trợ nhiều instance trên cùng một trang
 
-function initOcTerminal() {
-    if (window._ocTermReady) return;  // Tránh init 2 lần khi Livewire re-render
-    window._ocTermReady = true;
+function initOcTerminal({ termId, qbarId, streamUrl, sessionKey }) {
+    const stateKey = 'oc_init_' + sessionKey;
+    if (window[stateKey]) return;   // tránh init 2 lần khi Livewire re-render
+    window[stateKey] = true;
 
     const HIST_KEY = 'oc_term_hist';
 
-    // Load xterm.js từ CDN nếu chưa có
     function loadCss(href) {
         if (document.querySelector(`link[href="${href}"]`)) return;
         const l = document.createElement('link');
@@ -309,10 +253,10 @@ function initOcTerminal() {
         document.head.appendChild(l);
     }
     function loadScript(src, cb) {
-        if (window[src + '_loaded']) { cb(); return; }
+        if (window['_sc_' + src]) { cb(); return; }
         const s = document.createElement('script');
         s.src = src;
-        s.onload = () => { window[src + '_loaded'] = true; cb(); };
+        s.onload = () => { window['_sc_' + src] = true; cb(); };
         document.head.appendChild(s);
     }
 
@@ -324,23 +268,21 @@ function initOcTerminal() {
     function boot() {
         const term = new Terminal({
             cursorBlink: true,
-            fontFamily: '"Cascadia Code", "JetBrains Mono", "Courier New", monospace',
-            fontSize: 14,
-            lineHeight: 1.3,
-            scrollback: 5000,
+            fontFamily:  '"Cascadia Code","JetBrains Mono","Courier New",monospace',
+            fontSize: 14, lineHeight: 1.3, scrollback: 5000,
             theme: {
                 background: '#0d1117', foreground: '#c9d1d9', cursor: '#58a6ff',
                 selectionBackground: '#264f78',
-                black: '#484f58',   red: '#f85149',   green: '#3fb950', yellow: '#d29922',
-                blue: '#58a6ff',    magenta: '#bc8cff', cyan: '#76e3ea', white: '#b1bac4',
-                brightBlack: '#6e7681', brightRed: '#ff7b72', brightGreen: '#56d364',
+                black:   '#484f58', red:     '#f85149', green:   '#3fb950', yellow:  '#d29922',
+                blue:    '#58a6ff', magenta: '#bc8cff', cyan:    '#76e3ea', white:   '#b1bac4',
+                brightBlack: '#6e7681', brightRed: '#ff7b72', brightGreen:   '#56d364',
                 brightYellow: '#e3b341', brightBlue: '#79c0ff',
             },
         });
 
         const fit = new FitAddon.FitAddon();
         term.loadAddon(fit);
-        term.open(document.getElementById('oc-terminal'));
+        term.open(document.getElementById(termId));
         fit.fit();
         window.addEventListener('resize', () => fit.fit());
 
@@ -353,8 +295,10 @@ function initOcTerminal() {
 
         function execCmd(cmd) {
             running = true;
-            // Kết nối tới Laravel proxy — session cookie tự động được gửi
-            sse = new EventSource(window._ocStreamUrl + '?cmd=' + encodeURIComponent(cmd));
+            // sessionKey thay cho mgmt_key — Laravel dùng session để lookup
+            const url = streamUrl + '?session=' + encodeURIComponent(sessionKey)
+                                  + '&cmd='     + encodeURIComponent(cmd);
+            sse = new EventSource(url);
 
             sse.onmessage = (ev) => {
                 try {
@@ -409,8 +353,8 @@ function initOcTerminal() {
             }
         });
 
-        // Quick-command buttons — event delegation (hoạt động sau Livewire re-render)
-        document.getElementById('oc-qbar')?.addEventListener('click', (e) => {
+        // Quick-command buttons
+        document.getElementById(qbarId)?.addEventListener('click', (e) => {
             const btn = e.target.closest('.oc-qbtn');
             if (!btn) return;
             if (running) killSSE();
@@ -419,7 +363,6 @@ function initOcTerminal() {
             execCmd(btn.dataset.cmd);
         });
 
-        // Welcome
         term.write('\x1b[1;34m OpenClaw Terminal\x1b[0m\r\n');
         term.write('\x1b[2m Ctrl+C = cancel  |  Ctrl+L = clear\x1b[0m\r\n\r\n');
         prompt();
@@ -429,110 +372,63 @@ function initOcTerminal() {
 window.initOcTerminal = initOcTerminal;
 ```
 
-### `resources/js/app.js` — import
+Import vào `app.js`:
 
 ```js
 import './terminal-widget.js';
 ```
 
-Hoặc nếu dùng Vite:
+---
 
-```bash
-npm run build
+## 6. Dùng từ component cha
+
+```blade
+{{-- Parent truyền url và key của từng user --}}
+<livewire:terminal-widget
+    :mgmt-url="$server->mgmt_api_url"
+    :mgmt-key="$server->mgmt_api_key"
+/>
+```
+
+Hỗ trợ nhiều instance trên cùng trang (mỗi widget có `sessionKey` và `termId` riêng):
+
+```blade
+@foreach($user->servers as $server)
+    <livewire:terminal-widget
+        :mgmt-url="$server->mgmt_api_url"
+        :mgmt-key="$server->mgmt_api_key"
+        :key="$server->id"
+    />
+@endforeach
 ```
 
 ---
 
-## Bước 5 — Dùng component
-
-### Trong bất kỳ Blade view nào:
-
-```blade
-<livewire:terminal-widget />
-```
-
-### Full-page admin terminal:
-
-```php
-// routes/web.php
-Route::middleware(['auth'])->get('/admin/terminal', function () {
-    return view('admin.terminal');
-});
-```
-
-```blade
-{{-- resources/views/admin/terminal.blade.php --}}
-@extends('layouts.admin')
-
-@section('content')
-<div class="p-6 h-screen">
-    <livewire:terminal-widget />
-</div>
-@endsection
-```
-
----
-
-## Bước 6 — Cấu hình Nginx
-
-Bắt buộc tắt buffering cho SSE endpoint, nếu không output sẽ bị giữ lại thay vì stream thẳng:
+## 7. Nginx — tắt buffering cho SSE
 
 ```nginx
 location /terminal/stream {
-    fastcgi_buffering    off;
-    proxy_buffering      off;
-    proxy_read_timeout   120s;
+    fastcgi_buffering off;
+    proxy_buffering   off;
+    proxy_read_timeout 120s;
 }
 ```
-
-Với **Laravel Octane** (Swoole/RoadRunner) không cần config nginx vì không đi qua fastcgi.
 
 ---
 
 ## Troubleshooting
 
-### Stream không chạy, lệnh trả về ngay lập tức
+**`403 Invalid or expired terminal session`**
+Session hết hạn. Reload trang để tạo session mới.
 
-PHP output buffering đang bật. Thêm vào đầu method `stream()`:
+**`[stream error]` ngay khi chạy lệnh**
+Kiểm tra `mgmt_url` có đúng không và port 9998 của VPS đang mở.
 
+**Terminal bị xoá sau Livewire re-render**
+Thiếu `wire:ignore`. Xem lại Bước 4.
+
+**Stream không ra output (bị buffer)**
+Thêm đầu method `stream()`:
 ```php
 if (ob_get_level()) ob_end_clean();
-```
-
-### `[stream error]` hiện ra ngay khi chạy lệnh
-
-Kiểm tra:
-1. `OPENCLAW_MGMT_API_URL` có đúng IP/port không
-2. Management API đang chạy: `systemctl status openclaw-mgmt`
-3. Port 9998 không bị firewall block từ server Laravel
-
-### Terminal bị xoá sau khi click button Livewire
-
-Thiếu `wire:ignore` trên thẻ bao container `#oc-terminal`. Xem lại Bước 4.
-
-### `docker compose logs -f` không ngừng sau Ctrl+C
-
-Lệnh huỷ phía client đóng `EventSource`, server nhận `req.on('close')` và `SIGTERM` process. Nếu docker compose không tắt ngay, có thể cần vài giây. Bình thường.
-
----
-
-## Sơ đồ tóm tắt
-
-```
-browser
-  │ GET /terminal/stream?cmd=docker+compose+ps
-  │ Cookie: laravel_session=...   ← xác thực bằng session
-  ▼
-Laravel TerminalProxyController::stream()
-  │ Validate cmd (regex)
-  │ Thêm ?token=<MGMT_KEY> (server-side)
-  ▼
-Management API :9998/api/terminal/stream
-  │ Validate token
-  │ parseTerminalCmd() — whitelist
-  │ spawn('docker', ['compose', ...])
-  ▼
-stdout/stderr  →  SSE events  →  Laravel proxy  →  Browser
-                                                       │
-                                                    xterm.js render
 ```
