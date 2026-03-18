@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.14';
+const MGMT_VERSION = '1.0.15';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -2267,7 +2267,7 @@ const server = http.createServer(async (req, res) => {
       } catch {}
 
       const configTemplates = [
-        'anthropic', 'openai', 'openai-codex', 'google', 'gemini',
+        'anthropic', 'openai', 'openai-codex', 'google',
         'deepseek', 'groq', 'together', 'mistral', 'xai',
         'cerebras', 'sambanova', 'fireworks', 'cohere',
         'yi', 'baichuan', 'stepfun', 'siliconflow', 'novita', 'openrouter',
