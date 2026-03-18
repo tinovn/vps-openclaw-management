@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.15';
+const MGMT_VERSION = '1.0.16';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -2817,19 +2817,13 @@ const server = http.createServer(async (req, res) => {
       let switchedModel = null;
       if (shouldSwitch) {
         try {
-          const templatePath = PROVIDERS['openai-codex'].configTemplate;
-          const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+          const finalModel = body.model || 'openai-codex/gpt-5.4';
           let config;
           try { config = readConfig(); } catch { config = {}; }
-          const finalModel = body.model || template.agents?.defaults?.model?.primary || 'openai-codex/gpt-5.4';
-          if (!config.agents) config.agents = template.agents;
+          if (!config.agents) config.agents = { defaults: { model: {}, maxConcurrent: 4, subagents: { maxConcurrent: 8 } } };
+          if (!config.agents.defaults) config.agents.defaults = { model: {}, maxConcurrent: 4, subagents: { maxConcurrent: 8 } };
+          if (!config.agents.defaults.model) config.agents.defaults.model = {};
           config.agents.defaults.model.primary = finalModel;
-          const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
-          config.gateway = { ...template.gateway, ...(config.gateway || {}) };
-          config.gateway.auth = { token };
-          config.gateway.controlUi = { ...template.gateway.controlUi, ...(config.gateway.controlUi || {}) };
-          if (!config.browser) config.browser = template.browser;
-          if (template.models) config.models = template.models; else delete config.models;
           writeConfig(config);
           restartContainer('openclaw');
           switchedModel = finalModel;
