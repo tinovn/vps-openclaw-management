@@ -476,7 +476,9 @@ for i in $(seq 1 24); do
 done
 
 log "Auto-approve pending devices..."
-DEVICES_JSON=$(docker exec openclaw node dist/index.js devices list --json --token "${GATEWAY_TOKEN}" 2>/dev/null || true)
+DEVICES_RAW=$(docker exec openclaw node dist/index.js devices list --json --token "${GATEWAY_TOKEN}" 2>&1 || true)
+# Output may contain warnings before JSON — extract JSON object only
+DEVICES_JSON=$(echo "$DEVICES_RAW" | grep -Pzo '\{[\s\S]*\}$' | tr -d '\0' || true)
 DEVICE_IDS=$(echo "$DEVICES_JSON" | jq -r '.pending[]?.deviceId // empty' 2>/dev/null || true)
 if [ -n "$DEVICE_IDS" ]; then
     while IFS= read -r did; do
