@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.26';
+const MGMT_VERSION = '1.0.27';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -3278,7 +3278,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // =============================================================================
-// Auto-approve pending devices background job (runs every 10 seconds)
+// Auto-approve pending devices background job (runs every 5 seconds)
 // Version 2026.3.22+ requires device pairing — auto-approve so users don't need SSH
 // =============================================================================
 setInterval(() => {
@@ -3299,7 +3299,7 @@ setInterval(() => {
       } catch (e) { console.error(`[Devices] approve failed ${d.requestId}:`, e.message?.slice(0, 200)); }
     }
   } catch {}
-}, 10 * 1000);
+}, 5 * 1000);
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[Management API] Running on http://0.0.0.0:${PORT}`);
