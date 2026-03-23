@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.17';
+const MGMT_VERSION = '1.0.18';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -3264,14 +3264,16 @@ setInterval(() => {
 // =============================================================================
 setInterval(() => {
   try {
+    const gwToken = getEnvValue('OPENCLAW_GATEWAY_TOKEN');
+    if (!gwToken) return;
     const output = execSync(
-      `docker exec openclaw node dist/index.js devices list 2>/dev/null`,
+      `docker exec openclaw node dist/index.js devices list --token ${gwToken} 2>/dev/null`,
       { encoding: 'utf8', timeout: 10000 }
     );
     const uuids = output.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/g) || [];
     for (const id of uuids) {
       try {
-        execSync(`docker exec openclaw node dist/index.js devices approve ${id} 2>/dev/null`, { timeout: 10000 });
+        execSync(`docker exec openclaw node dist/index.js devices approve ${id} --token ${gwToken} 2>/dev/null`, { timeout: 10000 });
         console.log(`[Devices] Auto-approved: ${id}`);
       } catch {}
     }

@@ -466,11 +466,11 @@ for i in $(seq 1 24); do
 done
 
 log "Auto-approve devices..."
-DEVICE_IDS=$(docker exec openclaw node dist/index.js devices list 2>/dev/null \
+DEVICE_IDS=$(docker exec openclaw node dist/index.js devices list --token "${GATEWAY_TOKEN}" 2>/dev/null \
     | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' || true)
 if [ -n "$DEVICE_IDS" ]; then
     while IFS= read -r did; do
-        docker exec openclaw node dist/index.js devices approve "$did" 2>/dev/null && \
+        docker exec openclaw node dist/index.js devices approve "$did" --token "${GATEWAY_TOKEN}" 2>/dev/null && \
             log "Approved device: $did" || \
             log "Canh bao: Khong approve duoc device $did"
     done <<< "$DEVICE_IDS"
