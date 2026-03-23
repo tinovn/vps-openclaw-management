@@ -418,8 +418,7 @@ mv ${INSTALL_DIR}/config/openclaw.json.tmp ${INSTALL_DIR}/config/openclaw.json
 mkdir -p ${INSTALL_DIR}/config/agents/main/agent
 mkdir -p ${INSTALL_DIR}/config/agents/main/sessions
 
-# FIX quyền
-chmod -R 700 ./config
+ 
 # =============================================================================
 # 12. Pull images va start containers
 # =============================================================================
