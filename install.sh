@@ -416,13 +416,22 @@ mv ${INSTALL_DIR}/config/openclaw.json.tmp ${INSTALL_DIR}/config/openclaw.json
 
 # Tao thu muc auth-profiles (de Management API co the ghi API keys)
 mkdir -p ${INSTALL_DIR}/config/agents/main/agent
+mkdir -p ${INSTALL_DIR}/config/agents/main/sessions
 
+# FIX quyền
+chmod -R 700 ./config
 # =============================================================================
 # 12. Pull images va start containers
 # =============================================================================
 log "Pull Docker images..."
 cd ${INSTALL_DIR}
 docker compose pull
+
+
+
+
+
+
 
 log "Start Docker containers..."
 docker compose up -d
@@ -435,6 +444,23 @@ if docker inspect openclaw --format '{{.State.Status}}' 2>/dev/null | grep -q "r
     log "OpenClaw container dang chay."
 else
     log "Canh bao: OpenClaw container chua san sang. Kiem tra: docker compose logs openclaw"
+fi
+
+# =============================================================================
+# Auto-approve devices (version 2026.3.22+ yeu cau pairing)
+# =============================================================================
+log "Auto-approve devices..."
+sleep 5
+DEVICE_IDS=$(docker exec openclaw node dist/index.js devices list 2>/dev/null \
+    | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' || true)
+if [ -n "$DEVICE_IDS" ]; then
+    while IFS= read -r did; do
+        docker exec openclaw node dist/index.js devices approve "$did" 2>/dev/null && \
+            log "Approved device: $did" || \
+            log "Canh bao: Khong approve duoc device $did"
+    done <<< "$DEVICE_IDS"
+else
+    log "Khong co device nao can approve."
 fi
 
 # =============================================================================

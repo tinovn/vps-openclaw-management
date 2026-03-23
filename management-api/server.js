@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.16';
+const MGMT_VERSION = '1.0.17';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -2234,6 +2234,39 @@ const server = http.createServer(async (req, res) => {
       }
 
       const output = dockerExec(`node dist/index.js ${command}`, 60000);
+      return json(res, 200, { ok: true, output });
+    } catch (e) {
+      const stderr = e.stderr ? e.stderr.toString() : '';
+      const stdout = e.stdout ? e.stdout.toString() : '';
+      return json(res, 200, { ok: false, output: stdout || stderr || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/devices — List tat ca devices cho agent
+  // =========================================================================
+  if (route(req, 'GET', '/api/devices')) {
+    try {
+      const output = dockerExec('node dist/index.js devices list', 15000);
+      return json(res, 200, { ok: true, output });
+    } catch (e) {
+      const stderr = e.stderr ? e.stderr.toString() : '';
+      const stdout = e.stdout ? e.stdout.toString() : '';
+      return json(res, 200, { ok: false, output: stdout || stderr || e.message });
+    }
+  }
+
+  // =========================================================================
+  // POST /api/devices/approve/:deviceId — Approve mot device
+  // =========================================================================
+  if (route(req, 'POST', '/api/devices/approve/')) {
+    const deviceId = req.url.replace('/api/devices/approve/', '').split('?')[0].trim();
+    if (!deviceId) return json(res, 400, { ok: false, error: 'Missing deviceId' });
+    if (!/^[a-f0-9\-]{30,40}$/.test(deviceId)) {
+      return json(res, 400, { ok: false, error: 'Invalid deviceId format' });
+    }
+    try {
+      const output = dockerExec(`node dist/index.js devices approve ${deviceId}`, 15000);
       return json(res, 200, { ok: true, output });
     } catch (e) {
       const stderr = e.stderr ? e.stderr.toString() : '';
