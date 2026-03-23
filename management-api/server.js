@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.25';
+const MGMT_VERSION = '1.0.26';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -3291,12 +3291,12 @@ setInterval(() => {
     const jsonMatch = output.trim().match(/\{[\s\S]*\}$/);
     if (!jsonMatch) return;
     const data = JSON.parse(jsonMatch[0]);
-    const pending = (data.pending || []).map(d => d.deviceId).filter(Boolean);
-    for (const id of pending) {
+    const pending = (data.pending || []).filter(d => d.requestId);
+    for (const d of pending) {
       try {
-        execSync(`docker exec openclaw node dist/index.js devices approve ${id} 2>&1`, { timeout: 15000 });
-        console.log(`[Devices] Auto-approved: ${id}`);
-      } catch (e) { console.error(`[Devices] approve failed ${id}:`, e.message?.slice(0, 200)); }
+        execSync(`docker exec openclaw node dist/index.js devices approve ${d.requestId} 2>&1`, { timeout: 15000 });
+        console.log(`[Devices] Auto-approved: ${d.deviceId} (${d.requestId})`);
+      } catch (e) { console.error(`[Devices] approve failed ${d.requestId}:`, e.message?.slice(0, 200)); }
     }
   } catch {}
 }, 10 * 1000);

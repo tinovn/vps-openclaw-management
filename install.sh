@@ -479,13 +479,13 @@ log "Auto-approve pending devices..."
 DEVICES_RAW=$(docker exec openclaw node dist/index.js devices list --json 2>&1 || true)
 # Output may contain warnings before JSON — extract JSON object only
 DEVICES_JSON=$(echo "$DEVICES_RAW" | grep -Pzo '\{[\s\S]*\}$' | tr -d '\0' || true)
-DEVICE_IDS=$(echo "$DEVICES_JSON" | jq -r '.pending[]?.deviceId // empty' 2>/dev/null || true)
-if [ -n "$DEVICE_IDS" ]; then
-    while IFS= read -r did; do
-        docker exec openclaw node dist/index.js devices approve "$did" 2>/dev/null && \
-            log "Approved device: $did" || \
-            log "Canh bao: Khong approve duoc device $did"
-    done <<< "$DEVICE_IDS"
+REQUEST_IDS=$(echo "$DEVICES_JSON" | jq -r '.pending[]?.requestId // empty' 2>/dev/null || true)
+if [ -n "$REQUEST_IDS" ]; then
+    while IFS= read -r rid; do
+        docker exec openclaw node dist/index.js devices approve "$rid" 2>/dev/null && \
+            log "Approved device request: $rid" || \
+            log "Canh bao: Khong approve duoc device request $rid"
+    done <<< "$REQUEST_IDS"
 else
     log "Khong co device nao can approve (Management API se tu dong approve khi user pair)."
 fi
