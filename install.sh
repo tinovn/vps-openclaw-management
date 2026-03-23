@@ -456,6 +456,39 @@ else
     log "Canh bao: OpenClaw container chua san sang. Kiem tra: docker compose logs openclaw"
 fi
 
+# =============================================================================
+# Auto-approve devices (v2026.3.22+ yeu cau device pairing)
+# =============================================================================
+log "Doi container healthy truoc khi approve devices..."
+for i in $(seq 1 24); do
+    STATUS=$(docker inspect openclaw --format '{{.State.Health.Status}}' 2>/dev/null || echo "none")
+    if [ "$STATUS" = "healthy" ]; then
+        log "Container healthy sau ${i}x5s."
+        break
+    fi
+    if [ "$STATUS" = "none" ] && docker inspect openclaw --format '{{.State.Running}}' 2>/dev/null | grep -q "true"; then
+        if curl -sf http://localhost:18789/healthz >/dev/null 2>&1; then
+            log "Container san sang (healthz OK) sau ${i}x5s."
+            break
+        fi
+    fi
+    sleep 5
+done
+
+log "Auto-approve pending devices..."
+DEVICES_OUTPUT=$(docker exec openclaw node dist/index.js devices list --token "${GATEWAY_TOKEN}" 2>/dev/null || true)
+DEVICE_IDS=$(echo "$DEVICES_OUTPUT" \
+    | awk '/Pending/,/Paired|^$/' \
+    | grep -oE '[a-f0-9]{40,70}' || true)
+if [ -n "$DEVICE_IDS" ]; then
+    while IFS= read -r did; do
+        docker exec openclaw node dist/index.js devices approve "$did" --token "${GATEWAY_TOKEN}" 2>/dev/null && \
+            log "Approved device: $did" || \
+            log "Canh bao: Khong approve duoc device $did"
+    done <<< "$DEVICE_IDS"
+else
+    log "Khong co device nao can approve (Management API se tu dong approve khi user pair)."
+fi
 
 # =============================================================================
 # 13. Cai dat Management API
