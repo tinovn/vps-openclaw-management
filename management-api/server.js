@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.20';
+const MGMT_VERSION = '1.0.21';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -2355,6 +2355,20 @@ const server = http.createServer(async (req, res) => {
           if (!tp.includes('127.0.0.1')) { tp.unshift('127.0.0.1'); migrated = true; }
           if (!tp.includes('::1')) { tp.splice(tp.indexOf('127.0.0.1') + 1, 0, '::1'); migrated = true; }
           liveConfig.gateway.trustedProxies = tp;
+          // Ensure allowedOrigins in controlUi includes domain
+          const domain = (process.env.DOMAIN || '').replace(/^https?:\/\//, '');
+          const ui2 = liveConfig.gateway.controlUi;
+          if (ui2) {
+            const origins = ui2.allowedOrigins || [];
+            const needed = ['http://localhost', 'http://127.0.0.1'];
+            if (domain && domain !== 'localhost') {
+              needed.unshift(`https://${domain}`, `http://${domain}`);
+            }
+            for (const o of needed) {
+              if (!origins.includes(o)) { origins.push(o); migrated = true; }
+            }
+            ui2.allowedOrigins = origins;
+          }
         }
         if (migrated) writeConfig(liveConfig);
       } catch {}

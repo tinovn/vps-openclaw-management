@@ -408,8 +408,19 @@ done
 # Copy default config (Anthropic) va inject gateway token
 cp /etc/openclaw/config/anthropic.json ${INSTALL_DIR}/config/openclaw.json
 # Thay the placeholder token bang token thuc, them plugins mac dinh (zalo)
-jq --arg token "${GATEWAY_TOKEN}" '
+# Them allowedOrigins vao controlUi dua tren domain (v2026.3.22+ kiem tra origin)
+if [ -n "${DOMAIN_ARG}" ]; then
+    ORIGINS_FILTER='.gateway.controlUi.allowedOrigins = ["https://\($domain)", "http://\($domain)", "http://localhost", "http://127.0.0.1"]'
+else
+    ORIGINS_FILTER='.gateway.controlUi.allowedOrigins = ["http://localhost", "http://127.0.0.1"]'
+fi
+jq --arg token "${GATEWAY_TOKEN}" --arg domain "${DOMAIN_ARG}" '
   .gateway.auth.token = $token |
+  .gateway.controlUi.allowedOrigins = (
+    if $domain != "" then ["https://\($domain)", "http://\($domain)", "http://localhost", "http://127.0.0.1"]
+    else ["http://localhost", "http://127.0.0.1"]
+    end
+  ) |
   .plugins = { "entries": { "zalo": { "enabled": true } } }
 ' ${INSTALL_DIR}/config/openclaw.json > ${INSTALL_DIR}/config/openclaw.json.tmp
 mv ${INSTALL_DIR}/config/openclaw.json.tmp ${INSTALL_DIR}/config/openclaw.json
