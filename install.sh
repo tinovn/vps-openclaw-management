@@ -541,7 +541,7 @@ if [ -n "${DOMAIN_ARG}" ]; then
 else
     DASHBOARD_SCHEME="http"
 fi
-log "  Dashboard: ${DASHBOARD_SCHEME}://${DASHBOARD_HOST}?token=${GATEWAY_TOKEN}"
+log "  Dashboard: ${DASHBOARD_SCHEME}://${DASHBOARD_HOST}/#token=${GATEWAY_TOKEN}"
 log "  Gateway Token: ${GATEWAY_TOKEN}"
 log ""
 log "  Management API: http://${DROPLET_IP}:${MGMT_API_PORT}"
