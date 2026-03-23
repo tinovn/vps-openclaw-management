@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.23';
+const MGMT_VERSION = '1.0.24';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -3290,7 +3290,7 @@ setInterval(() => {
       { encoding: 'utf8', timeout: 10000 }
     );
     // Output may contain warnings/errors before JSON — extract the JSON object
-    const jsonMatch = output.match(/\{[\s\S]*\}$/);
+    const jsonMatch = output.trim().match(/\{[\s\S]*\}$/);
     if (!jsonMatch) return;
     const data = JSON.parse(jsonMatch[0]);
     const pending = (data.pending || []).map(d => d.deviceId).filter(Boolean);
