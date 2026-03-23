@@ -2355,18 +2355,6 @@ const server = http.createServer(async (req, res) => {
           if (!tp.includes('127.0.0.1')) { tp.unshift('127.0.0.1'); migrated = true; }
           if (!tp.includes('::1')) { tp.splice(tp.indexOf('127.0.0.1') + 1, 0, '::1'); migrated = true; }
           liveConfig.gateway.trustedProxies = tp;
-          // Ensure allowedOrigins includes domain
-          const domain = (process.env.DOMAIN || '').replace(/^https?:\/\//, '');
-          if (domain && domain !== 'localhost') {
-            const origins = liveConfig.gateway.allowedOrigins || [];
-            const needed = [`https://${domain}`, `http://${domain}`];
-            for (const o of needed) {
-              if (!origins.includes(o)) { origins.push(o); migrated = true; }
-            }
-            if (!origins.includes('http://localhost')) { origins.push('http://localhost'); migrated = true; }
-            if (!origins.includes('http://127.0.0.1')) { origins.push('http://127.0.0.1'); migrated = true; }
-            liveConfig.gateway.allowedOrigins = origins;
-          }
         }
         if (migrated) writeConfig(liveConfig);
       } catch {}
