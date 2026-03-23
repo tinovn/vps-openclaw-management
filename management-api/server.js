@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.21';
+const MGMT_VERSION = '1.0.22';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -2262,7 +2262,7 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/devices/approve/')) {
     const deviceId = req.url.replace('/api/devices/approve/', '').split('?')[0].trim();
     if (!deviceId) return json(res, 400, { ok: false, error: 'Missing deviceId' });
-    if (!/^[a-f0-9\-]{30,40}$/.test(deviceId)) {
+    if (!/^[a-f0-9\-]{30,70}$/.test(deviceId)) {
       return json(res, 400, { ok: false, error: 'Invalid deviceId format' });
     }
     try {
@@ -3286,13 +3286,12 @@ setInterval(() => {
     const gwToken = getEnvValue('OPENCLAW_GATEWAY_TOKEN');
     if (!gwToken) return;
     const output = execSync(
-      `docker exec openclaw node dist/index.js devices list --token ${gwToken} 2>/dev/null`,
+      `docker exec openclaw node dist/index.js devices list --json --token ${gwToken} 2>/dev/null`,
       { encoding: 'utf8', timeout: 10000 }
     );
-    // Extract pending device IDs (hex 40-70 chars) from Pending section only
-    const pendingSection = output.match(/Pending[\s\S]*?(?=Paired|$)/)?.[0] || '';
-    const uuids = pendingSection.match(/[a-f0-9]{40,70}/g) || [];
-    for (const id of uuids) {
+    const data = JSON.parse(output);
+    const pending = (data.pending || []).map(d => d.deviceId).filter(Boolean);
+    for (const id of pending) {
       try {
         execSync(`docker exec openclaw node dist/index.js devices approve ${id} --token ${gwToken} 2>/dev/null`, { timeout: 10000 });
         console.log(`[Devices] Auto-approved: ${id}`);
