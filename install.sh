@@ -448,8 +448,24 @@ fi
 # =============================================================================
 # Auto-approve devices (version 2026.3.22+ yeu cau pairing)
 # =============================================================================
+log "Doi container healthy truoc khi approve devices..."
+for i in $(seq 1 24); do
+    STATUS=$(docker inspect openclaw --format '{{.State.Health.Status}}' 2>/dev/null || echo "none")
+    if [ "$STATUS" = "healthy" ]; then
+        log "Container healthy sau ${i}x5s."
+        break
+    fi
+    if [ "$STATUS" = "none" ] && docker inspect openclaw --format '{{.State.Running}}' 2>/dev/null | grep -q "true"; then
+        # Container khong co healthcheck, check bang curl
+        if curl -sf http://localhost:18789/healthz >/dev/null 2>&1; then
+            log "Container san sang (healthz OK) sau ${i}x5s."
+            break
+        fi
+    fi
+    sleep 5
+done
+
 log "Auto-approve devices..."
-sleep 5
 DEVICE_IDS=$(docker exec openclaw node dist/index.js devices list 2>/dev/null \
     | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' || true)
 if [ -n "$DEVICE_IDS" ]; then
@@ -459,7 +475,7 @@ if [ -n "$DEVICE_IDS" ]; then
             log "Canh bao: Khong approve duoc device $did"
     done <<< "$DEVICE_IDS"
 else
-    log "Khong co device nao can approve."
+    log "Khong co device nao can approve (co the chua pair, se tu dong approve khi user pair)."
 fi
 
 # =============================================================================

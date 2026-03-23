@@ -3258,6 +3258,26 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// =============================================================================
+// Auto-approve pending devices background job (runs every 10 seconds)
+// Version 2026.3.22+ requires device pairing — auto-approve so users don't need SSH
+// =============================================================================
+setInterval(() => {
+  try {
+    const output = execSync(
+      `docker exec openclaw node dist/index.js devices list 2>/dev/null`,
+      { encoding: 'utf8', timeout: 10000 }
+    );
+    const uuids = output.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/g) || [];
+    for (const id of uuids) {
+      try {
+        execSync(`docker exec openclaw node dist/index.js devices approve ${id} 2>/dev/null`, { timeout: 10000 });
+        console.log(`[Devices] Auto-approved: ${id}`);
+      } catch {}
+    }
+  } catch {}
+}, 10 * 1000);
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[Management API] Running on http://0.0.0.0:${PORT}`);
 });
