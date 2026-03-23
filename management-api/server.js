@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.19';
+const MGMT_VERSION = '1.0.20';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -1721,7 +1721,7 @@ const server = http.createServer(async (req, res) => {
           p.models.push({ id: modelId, name: modelName || modelId });
         }
       }
-      tpl.gateway = { mode: 'local', bind: 'lan', auth: { token: '${OPENCLAW_GATEWAY_TOKEN}' }, trustedProxies: ['172.16.0.0/12', '10.0.0.0/8', '192.168.0.0/16'], controlUi: { enabled: true, allowInsecureAuth: true, dangerouslyAllowHostHeaderOriginFallback: true, dangerouslyDisableDeviceAuth: true } };
+      tpl.gateway = { mode: 'local', bind: 'lan', auth: { token: '${OPENCLAW_GATEWAY_TOKEN}' }, trustedProxies: ['127.0.0.1', '::1', '172.16.0.0/12', '10.0.0.0/8', '192.168.0.0/16'], controlUi: { enabled: true, allowInsecureAuth: true, dangerouslyAllowHostHeaderOriginFallback: true, dangerouslyDisableDeviceAuth: false } };
       tpl.browser = { headless: true, defaultProfile: 'openclaw', noSandbox: true };
 
       fs.writeFileSync(tplPath, JSON.stringify(tpl, null, 2), 'utf8');
@@ -2342,13 +2342,30 @@ const server = http.createServer(async (req, res) => {
         let migrated = false;
         if (liveConfig.gateway) {
           if (!liveConfig.gateway.controlUi) {
-            liveConfig.gateway.controlUi = { enabled: true, allowInsecureAuth: true, dangerouslyAllowHostHeaderOriginFallback: true, dangerouslyDisableDeviceAuth: true };
+            liveConfig.gateway.controlUi = { enabled: true, allowInsecureAuth: true, dangerouslyAllowHostHeaderOriginFallback: true, dangerouslyDisableDeviceAuth: false };
             migrated = true;
           } else {
             const ui = liveConfig.gateway.controlUi;
             if (!ui.allowInsecureAuth) { ui.allowInsecureAuth = true; migrated = true; }
             if (!ui.dangerouslyAllowHostHeaderOriginFallback) { ui.dangerouslyAllowHostHeaderOriginFallback = true; migrated = true; }
-            if (!ui.dangerouslyDisableDeviceAuth) { ui.dangerouslyDisableDeviceAuth = true; migrated = true; }
+            if (ui.dangerouslyDisableDeviceAuth === true) { ui.dangerouslyDisableDeviceAuth = false; migrated = true; }
+          }
+          // Ensure 127.0.0.1 and ::1 in trustedProxies (needed for host network mode)
+          const tp = liveConfig.gateway.trustedProxies || [];
+          if (!tp.includes('127.0.0.1')) { tp.unshift('127.0.0.1'); migrated = true; }
+          if (!tp.includes('::1')) { tp.splice(tp.indexOf('127.0.0.1') + 1, 0, '::1'); migrated = true; }
+          liveConfig.gateway.trustedProxies = tp;
+          // Ensure allowedOrigins includes domain
+          const domain = (process.env.DOMAIN || '').replace(/^https?:\/\//, '');
+          if (domain && domain !== 'localhost') {
+            const origins = liveConfig.gateway.allowedOrigins || [];
+            const needed = [`https://${domain}`, `http://${domain}`];
+            for (const o of needed) {
+              if (!origins.includes(o)) { origins.push(o); migrated = true; }
+            }
+            if (!origins.includes('http://localhost')) { origins.push('http://localhost'); migrated = true; }
+            if (!origins.includes('http://127.0.0.1')) { origins.push('http://127.0.0.1'); migrated = true; }
+            liveConfig.gateway.allowedOrigins = origins;
           }
         }
         if (migrated) writeConfig(liveConfig);

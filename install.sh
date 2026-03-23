@@ -311,12 +311,12 @@ cat > /etc/openclaw/config/anthropic.json << 'CONFIGEOF'
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": ["127.0.0.1", "::1", "172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true,
       "dangerouslyAllowHostHeaderOriginFallback": true,
-      "dangerouslyDisableDeviceAuth": true
+      "dangerouslyDisableDeviceAuth": false
     }
   },
   "browser": {
@@ -347,12 +347,12 @@ cat > /etc/openclaw/config/openai.json << 'CONFIGEOF'
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": ["127.0.0.1", "::1", "172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true,
       "dangerouslyAllowHostHeaderOriginFallback": true,
-      "dangerouslyDisableDeviceAuth": true
+      "dangerouslyDisableDeviceAuth": false
     }
   },
   "browser": {
@@ -383,12 +383,12 @@ cat > /etc/openclaw/config/google.json << 'CONFIGEOF'
     "auth": {
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": ["127.0.0.1", "::1", "172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true,
       "dangerouslyAllowHostHeaderOriginFallback": true,
-      "dangerouslyDisableDeviceAuth": true
+      "dangerouslyDisableDeviceAuth": false
     }
   },
   "browser": {
@@ -408,8 +408,14 @@ done
 # Copy default config (Anthropic) va inject gateway token
 cp /etc/openclaw/config/anthropic.json ${INSTALL_DIR}/config/openclaw.json
 # Thay the placeholder token bang token thuc, them plugins mac dinh (zalo)
-jq --arg token "${GATEWAY_TOKEN}" '
+# Them allowedOrigins dua tren domain (can cho v2026.3.22+ khi Caddy override Host header)
+ALLOWED_ORIGINS='["http://localhost", "http://127.0.0.1"]'
+if [ -n "${DOMAIN_ARG}" ]; then
+    ALLOWED_ORIGINS="[\"https://${DOMAIN_ARG}\", \"http://${DOMAIN_ARG}\", \"http://localhost\", \"http://127.0.0.1\"]"
+fi
+jq --arg token "${GATEWAY_TOKEN}" --argjson origins "${ALLOWED_ORIGINS}" '
   .gateway.auth.token = $token |
+  .gateway.allowedOrigins = $origins |
   .plugins = { "entries": { "zalo": { "enabled": true } } }
 ' ${INSTALL_DIR}/config/openclaw.json > ${INSTALL_DIR}/config/openclaw.json.tmp
 mv ${INSTALL_DIR}/config/openclaw.json.tmp ${INSTALL_DIR}/config/openclaw.json
