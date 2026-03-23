@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.18';
+const MGMT_VERSION = '1.0.19';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
@@ -3270,7 +3270,9 @@ setInterval(() => {
       `docker exec openclaw node dist/index.js devices list --token ${gwToken} 2>/dev/null`,
       { encoding: 'utf8', timeout: 10000 }
     );
-    const uuids = output.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/g) || [];
+    // Extract pending device IDs (hex 40-70 chars) from Pending section only
+    const pendingSection = output.match(/Pending[\s\S]*?(?=Paired|$)/)?.[0] || '';
+    const uuids = pendingSection.match(/[a-f0-9]{40,70}/g) || [];
     for (const id of uuids) {
       try {
         execSync(`docker exec openclaw node dist/index.js devices approve ${id} --token ${gwToken} 2>/dev/null`, { timeout: 10000 });

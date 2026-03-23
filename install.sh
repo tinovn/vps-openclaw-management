@@ -466,8 +466,11 @@ for i in $(seq 1 24); do
 done
 
 log "Auto-approve devices..."
-DEVICE_IDS=$(docker exec openclaw node dist/index.js devices list --token "${GATEWAY_TOKEN}" 2>/dev/null \
-    | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' || true)
+DEVICES_OUTPUT=$(docker exec openclaw node dist/index.js devices list --token "${GATEWAY_TOKEN}" 2>/dev/null || true)
+# Extract pending device IDs (hex 40-70 chars) from Pending section only
+DEVICE_IDS=$(echo "$DEVICES_OUTPUT" \
+    | awk '/Pending/,/Paired|^$/' \
+    | grep -oE '[a-f0-9]{40,70}' || true)
 if [ -n "$DEVICE_IDS" ]; then
     while IFS= read -r did; do
         docker exec openclaw node dist/index.js devices approve "$did" --token "${GATEWAY_TOKEN}" 2>/dev/null && \
