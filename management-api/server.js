@@ -807,6 +807,41 @@ function restartContainer(service = 'openclaw') {
 }
 
 // =============================================================================
+// On-demand device auto-approve polling (activated by /pair endpoint)
+// =============================================================================
+let _devicePollUntil = 0;
+let _devicePollTimer = null;
+
+function startDevicePoll() {
+  if (_devicePollTimer) return;
+  console.log('[Devices] Polling activated');
+  _devicePollTimer = setInterval(() => {
+    if (Date.now() > _devicePollUntil) {
+      clearInterval(_devicePollTimer);
+      _devicePollTimer = null;
+      console.log('[Devices] Polling stopped (timeout)');
+      return;
+    }
+    try {
+      const output = execSync(
+        'docker exec openclaw node dist/index.js devices list --json 2>&1',
+        { encoding: 'utf8', timeout: 15000 }
+      );
+      const jsonMatch = output.trim().match(/\{[\s\S]*\}$/);
+      if (!jsonMatch) return;
+      const data = JSON.parse(jsonMatch[0]);
+      const pending = (data.pending || []).filter(d => d.requestId);
+      for (const d of pending) {
+        try {
+          execSync(`docker exec openclaw node dist/index.js devices approve ${d.requestId} 2>&1`, { timeout: 15000 });
+          console.log(`[Devices] Auto-approved: ${d.deviceId} (${d.requestId})`);
+        } catch (e) { console.error(`[Devices] approve failed ${d.requestId}:`, e.message?.slice(0, 200)); }
+      }
+    } catch {}
+  }, 5 * 1000);
+}
+
+// =============================================================================
 // HTTP Server
 // =============================================================================
 const server = http.createServer(async (req, res) => {
@@ -831,6 +866,19 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   // PUBLIC ROUTES (no Bearer auth required)
   // =========================================================================
+
+  // GET /pair — Activate device auto-approve + redirect to gateway dashboard
+  if (route(req, 'GET', '/pair')) {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const token = url.searchParams.get('token') || '';
+    if (!token) return json(res, 400, { ok: false, error: 'Missing token parameter' });
+    _devicePollUntil = Date.now() + 60 * 1000;
+    if (!_devicePollTimer) startDevicePoll();
+    const domain = getDomainFromCaddyfile() || req.headers.host?.split(':')[0] || 'localhost';
+    const proto = domain === 'localhost' ? 'http' : 'https';
+    res.writeHead(302, { Location: `${proto}://${domain}/#token=${encodeURIComponent(token)}` });
+    return res.end();
+  }
 
   // GET /login — Serve login page
   if (route(req, 'GET', '/login')) {
@@ -1080,7 +1128,7 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         domain: domain,
         ip: serverIP,
-        dashboardUrl: `${scheme}://${host}/#token=${token}`,
+        dashboardUrl: `http://${serverIP}:${PORT}/pair?token=${token}`,
         gatewayToken: token,
         mgmtApiKey: sanitizeKey(getMgmtApiKey()),
         status,
@@ -3277,29 +3325,6 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-// =============================================================================
-// Auto-approve pending devices background job (runs every 5 seconds)
-// Version 2026.3.22+ requires device pairing — auto-approve so users don't need SSH
-// =============================================================================
-setInterval(() => {
-  try {
-    const output = execSync(
-      'docker exec openclaw node dist/index.js devices list --json 2>&1',
-      { encoding: 'utf8', timeout: 15000 }
-    );
-    // Output may contain warnings/errors before JSON — extract the JSON object
-    const jsonMatch = output.trim().match(/\{[\s\S]*\}$/);
-    if (!jsonMatch) return;
-    const data = JSON.parse(jsonMatch[0]);
-    const pending = (data.pending || []).filter(d => d.requestId);
-    for (const d of pending) {
-      try {
-        execSync(`docker exec openclaw node dist/index.js devices approve ${d.requestId} 2>&1`, { timeout: 15000 });
-        console.log(`[Devices] Auto-approved: ${d.deviceId} (${d.requestId})`);
-      } catch (e) { console.error(`[Devices] approve failed ${d.requestId}:`, e.message?.slice(0, 200)); }
-    }
-  } catch {}
-}, 5 * 1000);
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[Management API] Running on http://0.0.0.0:${PORT}`);
