@@ -164,7 +164,18 @@ npm install -g openclaw@latest
 log "OpenClaw version: $(openclaw --version 2>/dev/null || echo 'unknown')"
 
 # =============================================================================
-# 5. Cai dat Caddy (apt)
+# 5. Cai dat Google Chrome (headless browser cho OpenClaw)
+# =============================================================================
+log "Cai dat Google Chrome..."
+if ! command -v google-chrome &>/dev/null; then
+    curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -o /tmp/chrome.deb
+    apt-get install -y /tmp/chrome.deb
+    rm -f /tmp/chrome.deb
+fi
+log "Chrome version: $(google-chrome --version 2>/dev/null || echo 'not installed')"
+
+# =============================================================================
+# 6. Cai dat Caddy (apt)
 # =============================================================================
 log "Cai dat Caddy..."
 if ! command -v caddy &>/dev/null; then
