@@ -1,46 +1,37 @@
-# OpenClaw - Quản lý VPS
+# OpenClaw v2 — Quản lý VPS (Bare-metal)
 
-Triển khai và quản lý [OpenClaw](https://github.com/openclaw/openclaw) trên bất kỳ VPS nào chỉ với một lệnh duy nhất. Bao gồm Docker Compose, tự động SSL qua Caddy, và REST Management API để điều khiển từ xa.
+Triển khai và quản lý [OpenClaw](https://github.com/openclaw/openclaw) trên VPS **không cần Docker**. Cài đặt trực tiếp qua npm, reverse proxy bằng Caddy, quản lý bằng systemd và REST Management API.
 
 ## Tính năng
 
-- **Cài đặt một lệnh** — Tự động thiết lập Docker, OpenClaw, Caddy reverse proxy, tường lửa và fail2ban
-- **Management API** — REST API (cổng 9998) để quản lý từ xa qua HostBill hoặc bất kỳ HTTP client nào
-- **Đa nhà cung cấp AI** — 22 nhà cung cấp có sẵn + hỗ trợ thêm custom provider (OpenAI-compatible)
-- **ChatGPT OAuth** — Tích hợp OpenAI Codex (gpt-5.4) qua OAuth2 PKCE, tự động refresh token
-- **Đa agent** — Quản lý nhiều agent với model và API key độc lập, routing tin nhắn theo kênh
-- **Kênh nhắn tin** — Tích hợp Telegram, Discord, Slack, Zalo OA
-- **Tự động SSL** — Let's Encrypt qua Caddy, hoặc self-signed cho truy cập bằng IP
-- **Bảo mật** — Tường lửa UFW, fail2ban, xác thực API key với giới hạn tốc độ
+- **Cài đặt một lệnh** — Tự động cài Node.js 24, OpenClaw, Caddy, tường lửa và fail2ban
+- **Không Docker** — Chạy trực tiếp trên OS, tiết kiệm 200-500MB RAM
+- **Management API** — REST API (cổng 9998) để quản lý từ xa
+- **22+ nhà cung cấp AI** — Anthropic, OpenAI, Gemini, DeepSeek, ... + custom provider
+- **ChatGPT OAuth** — Tích hợp OpenAI Codex qua OAuth2 PKCE, tự động refresh token
+- **Đa agent** — Nhiều agent với model và API key độc lập, routing theo kênh
+- **Kênh nhắn tin** — Telegram, Discord, Slack, Zalo OA
+- **Tự động SSL** — Let's Encrypt qua Caddy, hoặc self-signed cho IP
+- **Device pairing** — Auto-approve qua file I/O (gần instant)
 
 ## Bắt đầu nhanh
 
-### Cài đặt trên VPS
-
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main/install.sh | bash
-```
-
-Với tuỳ chọn:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main/install.sh | \
-  bash -s -- --mgmt-key <MGMT_KEY_CUA_BAN> --domain <TEN_MIEN_CUA_BAN>
+curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/v2/install.sh | \
+  bash -s -- --domain <TEN_MIEN> [--mgmt-key <KEY>]
 ```
 
 | Tuỳ chọn | Mô tả |
 |----------|-------|
-| `--mgmt-key` | API key cho Management API (tự sinh nếu không truyền) |
 | `--domain` | Tên miền đã trỏ DNS về VPS (bật Let's Encrypt SSL) |
+| `--mgmt-key` | API key cho Management API (tự sinh nếu không truyền) |
 
 ### Sau khi cài đặt
 
-Script cài đặt sẽ hiển thị thông tin đăng nhập:
-
 ```
-Dashboard: https://<host>?token=<gateway_token>
-Management API: http://<ip>:9998
-MGMT API Key: <mgmt_key>
+Dashboard: http://<IP>:9998/pair?token=<GATEWAY_TOKEN>
+Management API: http://<IP>:9998
+MGMT API Key: <MGMT_KEY>
 ```
 
 ## Kiến trúc
@@ -48,451 +39,275 @@ MGMT API Key: <mgmt_key>
 ```
 Internet
   │
-  ├── :80/:443 ──► Caddy (reverse proxy + TLS)
+  ├── :80/:443 ──► Caddy (systemd — reverse proxy + SSL)
   │                  │
-  │                  └──► OpenClaw (:18789)
-  │                         ├── Gateway (WebSocket)
-  │                         ├── Control UI (Bảng điều khiển)
-  │                         └── Kênh nhắn tin (Telegram, Zalo, ...)
+  │                  ├── /login, /api/auth/* ──► Management API (:9998)
+  │                  └── /* ──► OpenClaw Gateway (:18789)
   │
-  └── :9998 ────► Management API (Node.js trên host)
+  └── :9998 ────► Management API (systemd — Node.js)
 ```
+
+Tất cả chạy trực tiếp trên OS, quản lý bằng **systemd**:
+
+| Service | Binary | Port | Mô tả |
+|---------|--------|------|-------|
+| `openclaw.service` | `openclaw` (npm) | 18789 | AI Gateway + Control UI |
+| `caddy.service` | `caddy` (apt) | 80, 443 | Reverse proxy + SSL |
+| `openclaw-mgmt.service` | `node server.js` | 9998 | REST API quản lý |
 
 ### Cấu trúc thư mục trên VPS
 
 ```
-/opt/openclaw/                      # Thư mục chính
-├── docker-compose.yml
-├── .env                            # Token, API key
-├── Caddyfile                       # Cấu hình Caddy
+/opt/openclaw/                     # Thư mục chính
+├── .env                           # Token, API key, domain config
+├── .openclaw -> config/           # Symlink (OpenClaw đọc config từ đây)
+├── Caddyfile                      # Cấu hình Caddy (dùng env vars)
 ├── config/
-│   ├── openclaw.json               # Cấu hình đang sử dụng
-│   └── agents/main/agent/
-│       └── auth-profiles.json      # API key + OAuth token
-└── data/                           # Dữ liệu lưu trữ
+│   ├── openclaw.json              # Cấu hình đang sử dụng
+│   ├── devices/
+│   │   ├── pending.json           # Devices đang chờ approve
+│   │   └── paired.json            # Devices đã pair
+│   └── agents/<agentId>/agent/
+│       └── auth-profiles.json     # API key + OAuth token
+└── data/                          # Dữ liệu lưu trữ
 
-/opt/openclaw-mgmt/
-└── server.js                       # Management API
+/opt/openclaw-mgmt/server.js       # Management API
+/etc/openclaw/config/              # Template configs (chỉ đọc)
+```
 
-/etc/openclaw/config/               # Template cấu hình (chỉ đọc)
-├── anthropic.json
-├── openai.json
-├── openai-codex.json
-└── google.json  (và 18 provider khác)
+## Vận hành
+
+### Kiểm tra trạng thái
+
+```bash
+systemctl status openclaw caddy openclaw-mgmt
+
+# Qua API
+MGMT_KEY=$(grep OPENCLAW_MGMT_API_KEY /opt/openclaw/.env | cut -d= -f2)
+curl -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/status
+```
+
+### Xem logs
+
+```bash
+journalctl -u openclaw -f                    # OpenClaw realtime
+journalctl -u caddy -f                       # Caddy realtime
+journalctl -u openclaw-mgmt -f               # Management API
+journalctl -u openclaw --no-pager -n 100     # 100 dòng gần nhất
+```
+
+### Restart / Stop / Start
+
+```bash
+systemctl restart openclaw       # Hoặc: curl -X POST ... /api/restart
+systemctl stop openclaw          # Hoặc: curl -X POST ... /api/stop
+systemctl start openclaw         # Hoặc: curl -X POST ... /api/start
+```
+
+### Cập nhật OpenClaw
+
+```bash
+npm update -g openclaw@latest && systemctl restart openclaw
+
+# Hoặc qua API
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/upgrade
+```
+
+### Cập nhật Management API
+
+```bash
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/self-update
+```
+
+### Chạy lệnh CLI
+
+```bash
+HOME=/opt/openclaw openclaw <command>
+
+# Hoặc qua API
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
+  -d '{"command":"models scan"}' http://localhost:9998/api/cli
 ```
 
 ## Management API
 
-**Địa chỉ**: `http://<ip>:9998`
+**Địa chỉ**: `http://<IP>:9998`
 **Xác thực**: `Authorization: Bearer <OPENCLAW_MGMT_API_KEY>`
 
-### Thông tin dịch vụ
+### Public (không cần auth)
 
 | Phương thức | Endpoint | Mô tả |
 |-------------|----------|-------|
-| `GET` | `/api/info` | URL Dashboard, token, trạng thái |
-| `GET` | `/api/status` | Trạng thái container (openclaw + caddy) |
-| `GET` | `/api/system` | Thông tin CPU, bộ nhớ, ổ đĩa, hệ điều hành |
-| `GET` | `/api/version` | Phiên bản image và digest |
-| `GET` | `/api/logs?lines=100&service=openclaw` | Log của container |
-| `POST` | `/api/self-update` | Cập nhật Management API + templates từ GitHub |
+| `GET` | `/pair?token=xxx` | Bật device auto-approve + redirect tới gateway |
+| `GET` | `/login` | Trang đăng nhập |
+| `GET` | `/terminal` | Terminal web UI |
 
-### Quản lý Container
+### Thông tin & trạng thái
 
 | Phương thức | Endpoint | Mô tả |
 |-------------|----------|-------|
-| `POST` | `/api/restart` | Khởi động lại container OpenClaw |
-| `POST` | `/api/stop` | Dừng container OpenClaw |
-| `POST` | `/api/start` | Chạy container OpenClaw |
-| `POST` | `/api/rebuild` | Tạo lại hoàn toàn (down + up) |
-| `POST` | `/api/upgrade` | Tải image mới nhất + tạo lại |
-| `POST` | `/api/reset` | Khôi phục cài đặt gốc (yêu cầu `{"confirm":"RESET"}`) |
+| `GET` | `/api/info` | Domain, IP, token, status, version |
+| `GET` | `/api/status` | Trạng thái OpenClaw + Caddy |
+| `GET` | `/api/version` | Version OpenClaw |
+| `GET` | `/api/system` | CPU, RAM, disk, versions |
+| `GET` | `/api/logs` | Logs (`?lines=100&service=openclaw`) |
+| `GET` | `/api/domain` | Domain + SSL info |
 
-### Nhà cung cấp AI và Model
+### Điều khiển service
 
 | Phương thức | Endpoint | Mô tả |
 |-------------|----------|-------|
-| `GET` | `/api/providers` | Danh sách tất cả providers (built-in + custom) kèm models |
-| `GET` | `/api/config` | Cấu hình hiện tại (model, provider, key đã ẩn) |
-| `PUT` | `/api/config/provider` | Chuyển đổi nhà cung cấp (built-in + custom) |
-| `PUT` | `/api/config/api-key` | Đặt API key cho nhà cung cấp |
-| `POST` | `/api/config/test-key` | Kiểm tra API key có hợp lệ không |
-| `POST` | `/api/providers/:provider/models` | Thêm model vào provider |
-| `DELETE` | `/api/providers/:provider/models/:modelId` | Xoá model khỏi provider |
+| `POST` | `/api/restart` | Restart OpenClaw |
+| `POST` | `/api/stop` | Stop OpenClaw |
+| `POST` | `/api/start` | Start OpenClaw |
+| `POST` | `/api/rebuild` | Restart OpenClaw + Caddy |
+| `POST` | `/api/upgrade` | `npm update -g openclaw` + restart |
+| `POST` | `/api/reset` | Khôi phục cài đặt gốc (`{"confirm":"RESET"}`) |
+| `POST` | `/api/self-update` | Cập nhật Management API từ GitHub |
+| `PUT` | `/api/domain` | Đổi domain (Caddy tự xin SSL) |
 
-**Chuyển đổi nhà cung cấp built-in:**
+### Nhà cung cấp AI & Model
+
+| Phương thức | Endpoint | Mô tả |
+|-------------|----------|-------|
+| `GET` | `/api/providers` | Danh sách 22+ providers + models |
+| `GET` | `/api/config` | Config hiện tại (model, provider, key masked) |
+| `PUT` | `/api/config/provider` | Đổi provider + model |
+| `PUT` | `/api/config/api-key` | Đặt API key |
+| `POST` | `/api/config/test-key` | Test API key |
 
 ```bash
+# Đổi sang DeepSeek
 curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"provider":"gemini","model":"google/gemini-2.5-flash"}' \
+  -d '{"provider":"deepseek","model":"deepseek/deepseek-chat"}' \
   http://localhost:9998/api/config/provider
-```
 
-22 nhà cung cấp có sẵn: `anthropic`, `openai`, `openai-codex`, `google`, `deepseek`, `groq`, `together`, `mistral`, `xai`, `cerebras`, `sambanova`, `fireworks`, `cohere`, `yi`, `baichuan`, `stepfun`, `siliconflow`, `novita`, `openrouter`, `minimax`, `moonshot`, `zhipu`
-
-**Đặt API key:**
-
-```bash
+# Set API key
 curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"provider":"gemini","apiKey":"AIzaSy..."}' \
+  -d '{"provider":"deepseek","apiKey":"sk-xxx"}' \
   http://localhost:9998/api/config/api-key
 ```
 
-API key được lưu ở cả `.env` (dự phòng) và `auth-profiles.json` (chính, được OpenClaw sử dụng).
-
-**Thêm model mới vào provider:**
-
-```bash
-curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"id":"claude-opus-4-6","name":"Claude Opus 4.6"}' \
-  http://localhost:9998/api/providers/anthropic/models
-```
-
-**Xoá model:**
-
-```bash
-curl -X DELETE -H "Authorization: Bearer $KEY" \
-  http://localhost:9998/api/providers/anthropic/models/claude-opus-4-6
-```
-
-Hoạt động cho cả built-in và custom provider. Model do user thêm được lưu trong config, không mất khi restart.
-
-### ChatGPT OAuth (OpenAI Codex)
-
-Xác thực với ChatGPT qua OAuth2 PKCE. Không cần API key — dùng tài khoản ChatGPT trực tiếp. Hỗ trợ các model `openai-codex/gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex`, v.v.
-
-| Phương thức | Endpoint | Mô tả |
-|-------------|----------|-------|
-| `POST` | `/api/config/chatgpt-oauth/start` | Khởi tạo flow — trả về OAuth URL + danh sách model |
-| `POST` | `/api/config/chatgpt-oauth/complete` | Hoàn thành xác thực bằng redirect URL |
-| `POST` | `/api/config/chatgpt-oauth/refresh` | Refresh token thủ công |
-| `GET` | `/api/config/chatgpt-oauth/status` | Trạng thái token hiện tại |
-
-**Bước 1 — Khởi tạo:**
-
-```bash
-curl -X POST -H "Authorization: Bearer $KEY" \
-  http://localhost:9998/api/config/chatgpt-oauth/start
-```
-
-```json
-{
-  "ok": true,
-  "sessionId": "fdd8babd...",
-  "oauthUrl": "https://auth.openai.com/oauth/authorize?...",
-  "models": [
-    { "id": "openai-codex/gpt-5.4", "name": "GPT-5.4", "default": true },
-    { "id": "openai-codex/gpt-5.4-mini", "name": "GPT-5.4-Mini" },
-    { "id": "openai-codex/gpt-5.3-codex", "name": "GPT-5.3-Codex" },
-    { "id": "openai-codex/gpt-5.2-codex", "name": "GPT-5.2-Codex" },
-    { "id": "openai-codex/gpt-5.2", "name": "GPT-5.2" },
-    { "id": "openai-codex/gpt-5.1-codex-max", "name": "GPT-5.1-Codex-Max" },
-    { "id": "openai-codex/gpt-5.1-codex-mini", "name": "GPT-5.1-Codex-Mini" }
-  ],
-  "defaultModel": "openai-codex/gpt-5.4",
-  "sessionExpiresIn": 600
-}
-```
-
-**Bước 2 — User mở `oauthUrl` trong trình duyệt, đăng nhập ChatGPT.**
-Sau khi đăng nhập, trình duyệt redirect về `localhost:1455/auth/callback?code=...`. Copy toàn bộ URL đó.
-
-**Bước 3 — Hoàn thành:**
-
-```bash
-curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "fdd8babd...",
-    "redirectUrl": "http://localhost:1455/auth/callback?code=ac_xxx&state=...",
-    "model": "openai-codex/gpt-5.4"
-  }' \
-  http://localhost:9998/api/config/chatgpt-oauth/complete
-```
-
-```json
-{
-  "ok": true,
-  "tokensStored": true,
-  "profileKey": "openai-codex:default",
-  "switchedProvider": true,
-  "model": "openai-codex/gpt-5.4"
-}
-```
-
-OpenClaw tự động restart và sẵn sàng sử dụng.
-
-> Token được tự động refresh trước khi hết hạn (kiểm tra mỗi 5 phút, refresh khi còn dưới 10 phút).
-
-**Xem trạng thái OAuth:**
-
-```bash
-curl -H "Authorization: Bearer $KEY" \
-  http://localhost:9998/api/config/chatgpt-oauth/status
-```
-
-```json
-{
-  "ok": true,
-  "hasOAuthToken": true,
-  "profileKey": "openai-codex:default",
-  "hasRefreshToken": true,
-  "expiresIn": 863826,
-  "expired": false
-}
-```
+22 providers có sẵn: `anthropic`, `openai`, `openai-codex`, `google`, `deepseek`, `groq`, `together`, `mistral`, `xai`, `cerebras`, `sambanova`, `fireworks`, `cohere`, `yi`, `baichuan`, `stepfun`, `siliconflow`, `novita`, `openrouter`, `minimax`, `moonshot`, `zhipu`
 
 ### Custom Provider
 
-Thêm nhà cung cấp AI bất kỳ (OpenAI-compatible) ngoài danh sách có sẵn.
-
 | Phương thức | Endpoint | Mô tả |
 |-------------|----------|-------|
-| `POST` | `/api/config/custom-provider` | Tạo custom provider mới |
+| `POST` | `/api/config/custom-provider` | Tạo custom provider (OpenAI-compatible) |
 | `GET` | `/api/config/custom-providers` | Danh sách custom providers |
-| `PUT` | `/api/config/custom-provider/:provider` | Cập nhật (thêm model, đổi endpoint/key) |
-| `DELETE` | `/api/config/custom-provider/:provider` | Xoá custom provider |
-
-**Tạo custom provider:**
+| `PUT` | `/api/config/custom-provider/:p` | Cập nhật (thêm model, đổi endpoint/key) |
+| `DELETE` | `/api/config/custom-provider/:p` | Xoá custom provider |
 
 ```bash
 curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"baseUrl":"https://api.example.com/v1","model":"myprovider/my-model","modelName":"My Model","apiKey":"sk-xxx"}' \
+  -d '{"baseUrl":"https://api.example.com/v1","model":"myprovider/my-model","apiKey":"sk-xxx"}' \
   http://localhost:9998/api/config/custom-provider
 ```
 
-| Trường | Bắt buộc | Mô tả |
-|--------|----------|-------|
-| `baseUrl` | Có | Endpoint API (OpenAI-compatible) |
-| `model` | Có | Định dạng `provider/model-id` |
-| `apiKey` | Có | API key |
-| `modelName` | Không | Tên hiển thị (mặc định = model-id) |
-| `api` | Không | Loại API (mặc định `openai-completions`) |
+### ChatGPT OAuth (OpenAI Codex)
 
-**Thêm model vào provider đã tạo:**
+| Phương thức | Endpoint | Mô tả |
+|-------------|----------|-------|
+| `POST` | `/api/config/chatgpt-oauth/start` | Khởi tạo flow — trả OAuth URL |
+| `POST` | `/api/config/chatgpt-oauth/complete` | Hoàn thành bằng redirect URL |
+| `POST` | `/api/config/chatgpt-oauth/refresh` | Refresh token thủ công |
+| `GET` | `/api/config/chatgpt-oauth/status` | Trạng thái token |
 
-```bash
-curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"model":"another-model","modelName":"Another Model"}' \
-  http://localhost:9998/api/config/custom-provider/myprovider
-```
-
-**Xoá custom provider:**
-
-```bash
-curl -X DELETE -H "Authorization: Bearer $KEY" \
-  http://localhost:9998/api/config/custom-provider/myprovider
-```
-
-Khi xoá, nếu model đang dùng thuộc provider bị xoá, hệ thống tự chuyển về `anthropic/claude-sonnet-4-20250514`.
+Token tự động refresh mỗi 5 phút khi còn dưới 10 phút.
 
 ### Đa Agent
 
-Quản lý nhiều agent với cấu hình (model, API key) độc lập nhau.
-
 | Phương thức | Endpoint | Mô tả |
 |-------------|----------|-------|
-| `GET` | `/api/agents` | Danh sách tất cả agents |
-| `POST` | `/api/agents` | Tạo agent mới |
+| `GET` | `/api/agents` | Danh sách agents |
+| `POST` | `/api/agents` | Tạo agent (`{"id","name","model"}`) |
 | `GET` | `/api/agents/:id` | Chi tiết agent |
-| `PUT` | `/api/agents/:id` | Cập nhật agent (tên, model, workspace) |
+| `PUT` | `/api/agents/:id` | Cập nhật agent |
 | `DELETE` | `/api/agents/:id` | Xoá agent |
-| `PUT` | `/api/agents/:id/default` | Đặt làm agent mặc định |
-| `GET` | `/api/agents/:id/api-key` | Xem API key của agent (đã ẩn) |
+| `PUT` | `/api/agents/:id/default` | Đặt default |
+| `GET` | `/api/agents/:id/api-key` | Xem API keys (masked) |
 | `PUT` | `/api/agents/:id/api-key` | Đặt API key cho agent |
-
-**Tạo agent mới:**
-
-```bash
-curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"id":"work","name":"Work Agent","model":"anthropic/claude-sonnet-4-20250514"}' \
-  http://localhost:9998/api/agents
-```
-
-**Đặt API key cho agent:**
-
-```bash
-curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"provider":"anthropic","apiKey":"sk-ant-xxx"}' \
-  http://localhost:9998/api/agents/work/api-key
-```
 
 ### Routing Bindings
 
-Định tuyến tin nhắn từ kênh nhắn tin tới agent cụ thể.
-
 | Phương thức | Endpoint | Mô tả |
 |-------------|----------|-------|
-| `GET` | `/api/bindings` | Danh sách tất cả routing bindings |
-| `POST` | `/api/bindings` | Tạo binding mới |
-| `PUT` | `/api/bindings/:index` | Cập nhật binding |
-| `DELETE` | `/api/bindings/:index` | Xoá binding |
-
-**Ví dụ — Route Telegram tới agent "work":**
-
-```bash
-curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"agentId":"work","match":{"channel":"telegram"}}' \
-  http://localhost:9998/api/bindings
-```
-
-### Tên miền và SSL
-
-| Phương thức | Endpoint | Mô tả |
-|-------------|----------|-------|
-| `GET` | `/api/domain` | Xem cấu hình tên miền hiện tại |
-| `PUT` | `/api/domain` | Đổi tên miền + tự động SSL |
-
-```bash
-curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"domain":"chat.example.com","email":"admin@example.com"}' \
-  http://localhost:9998/api/domain
-```
-
-DNS phải trỏ về IP của VPS trước khi gọi endpoint này. Caddy tự động lấy chứng chỉ Let's Encrypt. Tự động rollback nếu thất bại.
+| `GET` | `/api/bindings` | Danh sách bindings |
+| `POST` | `/api/bindings` | Tạo binding (`{"agentId":"work","match":{"channel":"telegram"}}`) |
+| `PUT` | `/api/bindings/:index` | Cập nhật |
+| `DELETE` | `/api/bindings/:index` | Xoá |
 
 ### Kênh nhắn tin
 
 | Phương thức | Endpoint | Mô tả |
 |-------------|----------|-------|
-| `GET` | `/api/channels` | Liệt kê tất cả kênh và trạng thái |
+| `GET` | `/api/channels` | Danh sách kênh |
 | `PUT` | `/api/channels/:name` | Thêm/cập nhật kênh |
 | `DELETE` | `/api/channels/:name` | Xoá kênh |
 
-Các kênh hỗ trợ: `telegram`, `discord`, `slack`, `zalo`
-
-**Thêm bot Telegram:**
-
-```bash
-curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"token":"123456:ABC-xyz"}' \
-  http://localhost:9998/api/channels/telegram
-```
-
-**Thêm Zalo OA:**
-
-```bash
-curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"token":"your_zalo_oa_token"}' \
-  http://localhost:9998/api/channels/zalo
-```
-
-API ghi cấu hình kênh trực tiếp vào `openclaw.json` với `enabled: true`, `dmPolicy: "open"`, và `allowFrom: ["*"]`. Plugin cho Zalo/Discord/Slack được tự động bật.
+Hỗ trợ: `telegram`, `discord`, `slack`, `zalo`
 
 ### Đăng nhập người dùng
 
 | Phương thức | Endpoint | Mô tả |
 |-------------|----------|-------|
-| `GET` | `/login` | Trang đăng nhập (công khai) |
-| `POST` | `/api/auth/login` | Đăng nhập (công khai) — trả về gateway token |
-| `POST` | `/api/auth/create-user` | Tạo tài khoản đăng nhập (yêu cầu Bearer auth) |
-| `GET` | `/api/auth/user` | Xem tài khoản hiện tại (yêu cầu Bearer auth) |
-| `PUT` | `/api/auth/change-password` | Đổi mật khẩu (yêu cầu Bearer auth) |
-| `DELETE` | `/api/auth/user` | Xoá tài khoản đăng nhập (yêu cầu Bearer auth) |
+| `GET` | `/login` | Trang đăng nhập (public) |
+| `POST` | `/api/auth/login` | Đăng nhập → gateway token (public) |
+| `POST` | `/api/auth/create-user` | Tạo tài khoản |
+| `GET` | `/api/auth/user` | Xem tài khoản |
+| `PUT` | `/api/auth/change-password` | Đổi mật khẩu |
+| `DELETE` | `/api/auth/user` | Xoá tài khoản |
 
-**Tạo tài khoản (chỉ admin):**
-
-```bash
-curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"your_password"}' \
-  http://localhost:9998/api/auth/create-user
-```
-
-Sau khi tạo, người dùng truy cập `https://domain/login` để đăng nhập. Hệ thống xác thực credentials rồi redirect vào OpenClaw với gateway token.
-
-### Biến môi trường
+### Biến môi trường & Devices
 
 | Phương thức | Endpoint | Mô tả |
 |-------------|----------|-------|
-| `GET` | `/api/env` | Liệt kê biến môi trường (giá trị nhạy cảm được ẩn) |
-| `PUT` | `/api/env/:KEY` | Đặt giá trị biến môi trường |
-| `DELETE` | `/api/env/:KEY` | Xoá biến môi trường |
+| `GET` | `/api/env` | Liệt kê env vars (masked) |
+| `PUT` | `/api/env/:key` | Đặt giá trị |
+| `DELETE` | `/api/env/:key` | Xoá |
+| `GET` | `/api/devices` | Danh sách devices |
+| `POST` | `/api/cli` | Chạy lệnh CLI (`{"command":"..."}`) |
 
-### CLI Proxy
+## Xử lý sự cố
 
-Thực thi lệnh CLI của OpenClaw bên trong container:
-
-```bash
-curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"command":"models scan"}' \
-  http://localhost:9998/api/cli
-```
-
-## Cấu hình
-
-### Thứ tự ưu tiên API Key
-
-OpenClaw tìm API key theo thứ tự sau:
-
-1. `auth-profiles.json` — Chính (được Management API ghi vào)
-2. Biến môi trường — Dự phòng (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`)
-
-### Bảo toàn cấu hình khi chuyển provider
-
-Khi chuyển nhà cung cấp qua `PUT /api/config/provider`, API bảo toàn tất cả các phần cấu hình hiện có:
-
-- Kênh nhắn tin (Telegram, Zalo, v.v.)
-- Plugin
-- Cài đặt Gateway (trustedProxies, controlUi)
-- Meta, messages, commands, wizard
-
-Chỉ model được cập nhật.
-
-### Gateway phía sau Caddy
-
-Hệ thống sử dụng Caddy làm reverse proxy. OpenClaw được cấu hình với:
-
-- `gateway.controlUi.allowInsecureAuth: true` — Bỏ qua ghép nối thiết bị khi truy cập qua proxy
-- `gateway.trustedProxies` — Dải mạng Docker (`172.16.0.0/12`, `10.0.0.0/8`, `192.168.0.0/16`)
-
-## Lệnh Docker (trên VPS)
+### Service không chạy
 
 ```bash
-cd /opt/openclaw
-
-# Xem log
-docker compose logs -f
-
-# Khởi động lại OpenClaw
-docker compose restart openclaw
-
-# Nâng cấp lên phiên bản mới nhất
-docker compose pull && docker compose up -d
-
-# Dừng tất cả
-docker compose down
-
-# Chạy lệnh CLI
-docker compose exec openclaw node dist/index.js <command>
+journalctl -u openclaw --no-pager -n 50      # Xem lỗi
+systemctl restart openclaw                     # Thử restart
+HOME=/opt/openclaw openclaw gateway --port 18789 --allow-unconfigured  # Chạy thủ công
 ```
 
-## Cấu trúc dự án
+### SSL không hoạt động
 
-```
-OpenClaw/
-├── install.sh                  # Script cài đặt all-in-one
-├── docker-compose.yml          # Container OpenClaw + Caddy
-├── Caddyfile                   # Template cấu hình Caddy reverse proxy
-├── management-api/
-│   └── server.js               # Management API (cổng 9998)
-├── config/
-│   ├── anthropic.json          # Template Anthropic
-│   ├── openai.json             # Template OpenAI (API key)
-│   ├── openai-codex.json       # Template OpenAI Codex (OAuth)
-│   ├── google.json             # Template Google Gemini
-│   └── ...                     # 18 providers còn lại
-├── postman_collection.json     # Bộ sưu tập Postman API
-├── CLAUDE.md                   # Hướng dẫn cho AI assistant
-└── README.md
+```bash
+journalctl -u caddy --no-pager -n 50          # Xem lỗi Caddy
+dig +short <DOMAIN>                            # Kiểm tra DNS
+grep DOMAIN /opt/openclaw/.env                 # Kiểm tra config
+systemctl restart caddy                        # Restart Caddy
 ```
 
-## Lưu ý bảo mật
+### Device pairing chậm/không hoạt động
 
-- Management API sử dụng xác thực Bearer token với giới hạn tốc độ (10 lần thất bại = khoá 15 phút)
-- API key được ẩn trong tất cả các phản hồi GET
-- Gateway token là chuỗi hex 64 ký tự, sinh bằng `openssl rand -hex 32`
-- Tường lửa UFW chỉ mở cổng 80, 443, 9998, và SSH
-- fail2ban bảo vệ chống tấn công brute-force
-- Không commit API key hoặc token thật vào git
+```bash
+cat /opt/openclaw/config/devices/pending.json  # Có pending không?
+cat /opt/openclaw/config/devices/paired.json   # Đã pair chưa?
+
+# Reset pairing
+echo '{}' > /opt/openclaw/config/devices/paired.json
+echo '{}' > /opt/openclaw/config/devices/pending.json
+systemctl restart openclaw
+```
+
+## Bảo mật
+
+- Gateway token + MGMT API key: hex 64 ký tự (`openssl rand -hex 32`)
+- UFW: chỉ mở port 80, 443, 9998, SSH
+- fail2ban: chống brute-force
+- Rate limit: 10 lần thất bại = khoá 15 phút
+- API key được masked trong tất cả response GET
+- Device pairing: mỗi thiết bị cần được approve
 
 ## Giấy phép
 
