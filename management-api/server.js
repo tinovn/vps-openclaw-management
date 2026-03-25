@@ -874,9 +874,11 @@ const server = http.createServer(async (req, res) => {
     if (!token) return json(res, 400, { ok: false, error: 'Missing token parameter' });
     _devicePollUntil = Date.now() + 60 * 1000;
     if (!_devicePollTimer) startDevicePoll();
-    const domain = getDomainFromCaddyfile() || req.headers.host?.split(':')[0] || 'localhost';
-    const proto = domain === 'localhost' ? 'http' : 'https';
-    res.writeHead(302, { Location: `${proto}://${domain}/#token=${encodeURIComponent(token)}` });
+    const rawDomain = (getEnvValue('DOMAIN') || '').trim();
+    const domain = (rawDomain && rawDomain !== 'localhost' && !/\s/.test(rawDomain)) ? rawDomain.replace(/^https?:\/\//, '') : null;
+    const host = domain || getServerIP();
+    const proto = domain ? 'https' : 'http';
+    res.writeHead(302, { Location: `${proto}://${host}/#token=${encodeURIComponent(token)}` });
     return res.end();
   }
 
