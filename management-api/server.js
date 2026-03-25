@@ -827,13 +827,68 @@ function restartService(service = OPENCLAW_SERVICE) {
 
 // =============================================================================
 // On-demand device auto-approve polling (activated by /pair endpoint)
+// Reads/writes device JSON files directly — no CLI/gateway needed
 // =============================================================================
+const DEVICES_DIR = `${CONFIG_DIR}/devices`;
+const PENDING_FILE = `${DEVICES_DIR}/pending.json`;
+const PAIRED_FILE = `${DEVICES_DIR}/paired.json`;
+
 let _devicePollUntil = 0;
 let _devicePollTimer = null;
+
+function approveAllPendingDevices() {
+  try {
+    if (!fs.existsSync(PENDING_FILE)) return 0;
+    const pending = JSON.parse(fs.readFileSync(PENDING_FILE, 'utf8'));
+    const keys = Object.keys(pending);
+    if (keys.length === 0) return 0;
+
+    let paired = {};
+    try { paired = JSON.parse(fs.readFileSync(PAIRED_FILE, 'utf8')); } catch {}
+
+    let approved = 0;
+    const now = Date.now();
+    for (const deviceId of keys) {
+      const device = pending[deviceId];
+      paired[deviceId] = {
+        ...device,
+        approvedScopes: device.scopes || [],
+        tokens: {
+          [device.role || 'operator']: {
+            token: crypto.randomBytes(32).toString('base64url'),
+            role: device.role || 'operator',
+            scopes: device.scopes || [],
+            createdAtMs: now
+          }
+        },
+        createdAtMs: device.ts || now,
+        approvedAtMs: now
+      };
+      delete paired[deviceId].requestId;
+      delete paired[deviceId].ts;
+      delete paired[deviceId].silent;
+      delete paired[deviceId].isRepair;
+      console.log(`[Devices] Auto-approved: ${deviceId}`);
+      approved++;
+    }
+
+    if (approved > 0) {
+      fs.mkdirSync(DEVICES_DIR, { recursive: true });
+      fs.writeFileSync(PAIRED_FILE, JSON.stringify(paired, null, 2), 'utf8');
+      fs.writeFileSync(PENDING_FILE, '{}', 'utf8');
+    }
+    return approved;
+  } catch (e) {
+    console.error(`[Devices] approve error: ${e.message}`);
+    return 0;
+  }
+}
 
 function startDevicePoll() {
   if (_devicePollTimer) return;
   console.log('[Devices] Polling activated');
+  // Approve immediately on first call
+  approveAllPendingDevices();
   _devicePollTimer = setInterval(() => {
     if (Date.now() > _devicePollUntil) {
       clearInterval(_devicePollTimer);
@@ -841,23 +896,8 @@ function startDevicePoll() {
       console.log('[Devices] Polling stopped (timeout)');
       return;
     }
-    try {
-      const output = execSync(
-        `HOME=${COMPOSE_DIR} ${OPENCLAW_BIN} devices list --json 2>&1`,
-        { encoding: 'utf8', timeout: 15000 }
-      );
-      const jsonMatch = output.trim().match(/\{[\s\S]*\}$/);
-      if (!jsonMatch) return;
-      const data = JSON.parse(jsonMatch[0]);
-      const pending = (data.pending || []).filter(d => d.requestId);
-      for (const d of pending) {
-        try {
-          execSync(`HOME=${COMPOSE_DIR} ${OPENCLAW_BIN} devices approve ${d.requestId} 2>&1`, { timeout: 15000 });
-          console.log(`[Devices] Auto-approved: ${d.deviceId} (${d.requestId})`);
-        } catch (e) { console.error(`[Devices] approve failed ${d.requestId}:`, e.message?.slice(0, 200)); }
-      }
-    } catch {}
-  }, 5 * 1000);
+    approveAllPendingDevices();
+  }, 2 * 1000);
 }
 
 // =============================================================================
