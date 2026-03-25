@@ -803,7 +803,7 @@ function systemctl(action, service = OPENCLAW_SERVICE, timeout = 30000) {
 }
 
 function openclawExec(cmd, timeout = 30000) {
-  return shell(`${OPENCLAW_BIN} ${cmd}`, timeout);
+  return shell(`HOME=${COMPOSE_DIR} ${OPENCLAW_BIN} ${cmd}`, timeout);
 }
 
 function getServiceStatus(service = OPENCLAW_SERVICE) {
@@ -843,7 +843,7 @@ function startDevicePoll() {
     }
     try {
       const output = execSync(
-        `${OPENCLAW_BIN} devices list --json 2>&1`,
+        `HOME=${COMPOSE_DIR} ${OPENCLAW_BIN} devices list --json 2>&1`,
         { encoding: 'utf8', timeout: 15000 }
       );
       const jsonMatch = output.trim().match(/\{[\s\S]*\}$/);
@@ -852,7 +852,7 @@ function startDevicePoll() {
       const pending = (data.pending || []).filter(d => d.requestId);
       for (const d of pending) {
         try {
-          execSync(`${OPENCLAW_BIN} devices approve ${d.requestId} 2>&1`, { timeout: 15000 });
+          execSync(`HOME=${COMPOSE_DIR} ${OPENCLAW_BIN} devices approve ${d.requestId} 2>&1`, { timeout: 15000 });
           console.log(`[Devices] Auto-approved: ${d.deviceId} (${d.requestId})`);
         } catch (e) { console.error(`[Devices] approve failed ${d.requestId}:`, e.message?.slice(0, 200)); }
       }
