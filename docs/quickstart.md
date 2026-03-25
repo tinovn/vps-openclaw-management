@@ -2,7 +2,7 @@
 
 ## Mục lục
 
-- [1. Truy cập Dashboard](#1-truy-cập-dashboard)
+- [1. Ghép nối thiết bị (Pair)](#1-ghép-nối-thiết-bị-pair)
 - [2. Thêm API Key AI](#2-thêm-api-key-ai)
 - [3. Gửi tin nhắn đầu tiên](#3-gửi-tin-nhắn-đầu-tiên)
 - [4. Đổi model AI](#4-đổi-model-ai)
@@ -11,22 +11,19 @@
 
 ---
 
-## 1. Truy cập Dashboard
+## 1. Ghép nối thiết bị (Pair)
 
-Sau khi VPS được cài đặt xong, bạn truy cập Dashboard qua trình duyệt:
+Sau khi VPS được cài đặt xong, bạn ghép nối thiết bị qua trình duyệt:
 
 ```
-https://<domain-hoặc-ip>?token=<gateway-token>
+http://<IP>:9998/pair?token=<gateway-token>
 ```
 
 **Ví dụ:**
-- Có domain: `https://openclaw.example.com?token=abc123...`
-- Chỉ có IP: `https://180.93.138.155?token=abc123...`
-
-> **Lưu ý:** Nếu dùng IP (không có domain), trình duyệt sẽ cảnh báo chứng chỉ SSL tự ký — bấm **"Advanced"** → **"Proceed"** để tiếp tục.
+- `http://180.93.138.155:9998/pair?token=abc123...`
 
 **Thông tin đăng nhập** được cung cấp trong panel quản lý tại tino.vn:
-- **Gateway Token** — dùng để truy cập Dashboard
+- **Gateway Token** — dùng để ghép nối thiết bị
 - **Management API Key** — do hệ thống tino.vn sinh ra và quản lý, dùng để kết nối panel với VPS
 
 > **Quan trọng:** Không tự thay đổi hoặc xóa `OPENCLAW_MGMT_API_KEY` trong file `.env` trên VPS. Nếu thay đổi, panel tino.vn sẽ không kết nối được với VPS.
@@ -74,7 +71,7 @@ Kết quả: `{"ok": true}` nếu key hợp lệ.
 
 ## 3. Gửi tin nhắn đầu tiên
 
-1. Truy cập Dashboard bằng URL ở bước 1
+1. Ghép nối thiết bị bằng URL ở bước 1
 2. Đảm bảo đã thêm API key ở bước 2
 3. Gõ tin nhắn vào ô chat và nhấn Enter
 4. OpenClaw sẽ trả lời bằng AI model đang được cấu hình
@@ -101,11 +98,14 @@ curl -X PUT \
 
 ```
 /opt/openclaw/                          # Thư mục chính
-├── docker-compose.yml                  # Cấu hình Docker services
-├── Caddyfile                           # Cấu hình reverse proxy + SSL
 ├── .env                                # Biến môi trường (tokens, API keys)
+├── .openclaw -> config/                # Symlink
+├── Caddyfile                           # Cấu hình reverse proxy + SSL
 ├── config/
 │   ├── openclaw.json                   # Cấu hình hiện tại (model, gateway, browser)
+│   ├── devices/
+│   │   ├── pending.json                # Thiết bị đang chờ ghép nối
+│   │   └── paired.json                 # Thiết bị đã ghép nối
 │   └── agents/main/agent/
 │       └── auth-profiles.json          # API keys (format chuẩn OpenClaw)
 └── data/                               # Dữ liệu lưu trữ
@@ -126,22 +126,20 @@ curl -X PUT \
 SSH vào VPS và chạy:
 
 ```bash
-cd /opt/openclaw
-
 # Xem logs
-docker compose logs -f openclaw
+journalctl -u openclaw -f
 
 # Restart
-docker compose restart openclaw
+systemctl restart openclaw
 
 # Cập nhật phiên bản mới
-docker compose pull && docker compose up -d
+npm update -g openclaw@latest && systemctl restart openclaw
 
 # Dừng tất cả
-docker compose down
+systemctl stop openclaw
 ```
 
-> Xem thêm tại [Quản lý VPS & Docker](quan-ly-vps.md).
+> Xem thêm tại [Quản lý VPS](quan-ly-vps.md).
 
 ---
 
@@ -149,5 +147,5 @@ docker compose down
 
 - [Cấu hình chi tiết](cau-hinh.md) — Đổi model, cấu hình gateway, browser
 - [Kết nối kênh nhắn tin](kenh-nhan-tin.md) — Telegram, Discord, Zalo, Slack
-- [Quản lý VPS & Docker](quan-ly-vps.md) — Domain, SSL, Docker commands
+- [Quản lý VPS](quan-ly-vps.md) — Domain, SSL, lệnh quản lý
 - [Tham chiếu API](api-reference.md) — Danh sách đầy đủ API endpoints

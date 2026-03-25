@@ -8,7 +8,7 @@
 - [2. Mã lỗi HTTP và ý nghĩa](#2-mã-lỗi-http-và-ý-nghĩa)
 - [3. Timeout cho từng loại thao tác](#3-timeout-cho-từng-loại-thao-tác)
 - [4. Xử lý lỗi Authentication](#4-xử-lý-lỗi-authentication)
-- [5. Xử lý lỗi Docker](#5-xử-lý-lỗi-docker)
+- [5. Xử lý lỗi Service](#5-xử-lý-lỗi-service)
 - [6. Xử lý lỗi file I/O](#6-xử-lý-lỗi-file-io)
 - [7. Xử lý lỗi DNS & Domain](#7-xử-lý-lỗi-dns--domain)
 - [8. Xử lý lỗi API Key Test](#8-xử-lý-lỗi-api-key-test)
@@ -50,7 +50,7 @@ Format response lỗi thống nhất:
 | `401` | Thiếu/sai Bearer token | Kiểm tra `OPENCLAW_MGMT_API_KEY` trong `.env` |
 | `403` | Cố sửa/xóa biến được bảo vệ | Biến đó không cho phép thay đổi |
 | `429` | IP bị chặn (quá 10 lần auth sai) | Đợi 15 phút hoặc restart mgmt service |
-| `500` | Lỗi server (shell timeout, file I/O, Docker fail) | Xem logs: `journalctl -u openclaw-mgmt` |
+| `500` | Lỗi server (shell timeout, file I/O, service fail) | Xem logs: `journalctl -u openclaw-mgmt` |
 
 ---
 
@@ -59,11 +59,11 @@ Format response lỗi thống nhất:
 | Thao tác | Timeout | Ghi chú |
 |---|---|---|
 | Shell command mặc định | 30s | Hàm `shell()` |
-| Docker compose (general) | 60s | restart, stop, start |
-| Docker compose down | 60s | Graceful shutdown |
-| Docker compose up | 120s | Rebuild/start |
-| Docker pull + recreate | 300s (5 phút) | `/api/upgrade` — chạy ngầm |
-| Docker exec (CLI proxy) | 60s | `/api/cli` |
+| systemctl restart | 60s | restart, stop, start |
+| systemctl stop | 60s | Graceful shutdown |
+| systemctl start | 120s | Rebuild/start |
+| npm update + restart | 300s (5 phút) | `/api/upgrade` — chạy ngầm |
+| CLI proxy | 60s | `/api/cli` |
 | DNS lookup (dig/host) | 10s | Validate domain |
 | API key test (curl) | 15s | Test provider endpoints |
 | Caddy restart (domain change) | 30s | Sau khi ghi Caddyfile |
@@ -105,17 +105,17 @@ systemctl restart openclaw-mgmt
 
 ---
 
-## 5. Xử lý lỗi Docker
+## 5. Xử lý lỗi Service
 
-### Container not found
+### Service not found
 
-- `docker inspect` throw exception → catch trả về `status: "not_found"`.
+- `systemctl status` trả về inactive/not-found → catch trả về `status: "not_found"`.
 - Không phải lỗi 500, trả về bình thường trong response body.
 
 ### Restart fail
 
-- `docker compose restart openclaw` throw → catch ở route level → 500.
-- Nguyên nhân thường: image bị corrupt, disk full, OOM.
+- `systemctl restart openclaw` throw → catch ở route level → 500.
+- Nguyên nhân thường: config lỗi, disk full, OOM.
 
 ### Caddy rollback khi domain fail
 
@@ -138,15 +138,15 @@ Luồng xử lý khi đổi domain:
 ### Rebuild fail
 
 ```
-docker compose down (60s) → docker compose up -d (120s)
+systemctl restart openclaw (60s) → systemctl restart caddy (60s)
 ```
 
-- Nếu `down` timeout → `up` KHÔNG được gọi → container ở trạng thái không xác định.
-- Nếu `up` fail → container ở trạng thái stopped.
+- Nếu restart openclaw timeout → caddy KHÔNG được restart → service ở trạng thái không xác định.
+- Nếu restart caddy fail → caddy ở trạng thái stopped.
 
 ### Kiểm tra sau restart/rebuild
 
-API sleep 2-3 giây rồi check status. Nếu container chưa ready sau sleep → status có thể chưa chính xác. Không có retry loop.
+API sleep 2-3 giây rồi check status. Nếu service chưa ready sau sleep → status có thể chưa chính xác. Không có retry loop.
 
 ---
 
@@ -195,7 +195,7 @@ jq --arg t "$TOKEN" '.gateway.auth.token = $t' \
   mv /tmp/oc.json /opt/openclaw/config/openclaw.json
 
 # Restart
-docker compose -f /opt/openclaw/docker-compose.yml restart openclaw
+systemctl restart openclaw
 ```
 
 ---
@@ -276,13 +276,13 @@ if (/[;&|`$(){}]/.test(command)) {
 
 Lệnh được thực thi:
 ```bash
-docker compose exec -T openclaw node dist/index.js <command>
+HOME=/opt/openclaw openclaw <command>
 ```
 
 ### Lỗ hổng đã biết
 
 - **Redirect `>`, `<`** KHÔNG bị chặn. Ví dụ: `models scan > /tmp/file` vẫn chạy được.
-- Tuy nhiên lệnh chạy trong container (không phải host), nên rủi ro hạn chế.
+- Lệnh chạy trực tiếp trên host, cần lưu ý rủi ro bảo mật.
 
 ### Các điểm khác
 
@@ -290,7 +290,7 @@ docker compose exec -T openclaw node dist/index.js <command>
 |---|---|
 | Domain trong dig/host | Regex validate trước khi đưa vào shell |
 | API key trong curl test | Escape single quote |
-| Docker commands | Hardcoded, không chứa user input |
+| systemctl commands | Hardcoded, không chứa user input |
 | Env var key | Regex `/^[A-Z][A-Z0-9_]*$/` |
 
 ---
@@ -311,7 +311,7 @@ docker compose exec -T openclaw node dist/index.js <command>
 |---|---|
 | `OPENCLAW_GATEWAY_TOKEN` | Mất → không truy cập Dashboard |
 | `OPENCLAW_MGMT_API_KEY` | Mất → panel mất kết nối |
-| `OPENCLAW_VERSION` | Cần cho Docker image tag |
+| `OPENCLAW_VERSION` | Cần cho phiên bản OpenClaw |
 | `OPENCLAW_GATEWAY_PORT` | Cần cho gateway binding |
 
 → Trả về `403 Forbidden`.
@@ -364,7 +364,7 @@ TOKEN=$(grep OPENCLAW_GATEWAY_TOKEN /opt/openclaw/.env | cut -d= -f2)
 jq --arg t "$TOKEN" '.gateway.auth.token = $t' \
   /opt/openclaw/config/openclaw.json > /tmp/oc.json && \
   mv /tmp/oc.json /opt/openclaw/config/openclaw.json
-docker compose -f /opt/openclaw/docker-compose.yml restart openclaw
+systemctl restart openclaw
 ```
 
 ### 11.4 — Caddy không start sau đổi domain
@@ -373,7 +373,7 @@ docker compose -f /opt/openclaw/docker-compose.yml restart openclaw
 
 **Kiểm tra:**
 ```bash
-docker compose -f /opt/openclaw/docker-compose.yml logs caddy
+journalctl -u caddy --no-pager -n 50
 cat /opt/openclaw/Caddyfile
 ```
 
@@ -389,36 +389,35 @@ IP=$(hostname -I | awk '{print $1}')
 cat > /opt/openclaw/Caddyfile << EOF
 ${IP} {
     tls internal
-    reverse_proxy openclaw:18789
+    reverse_proxy 127.0.0.1:18789
 }
 EOF
-docker compose -f /opt/openclaw/docker-compose.yml restart caddy
+systemctl restart caddy
 ```
 
 ### 11.5 — Upgrade không hoàn thành
 
-**Triệu chứng:** Gọi `/api/upgrade` trả 202 nhưng container không cập nhật.
+**Triệu chứng:** Gọi `/api/upgrade` trả 202 nhưng service không cập nhật.
 
 **Kiểm tra:**
 ```bash
 journalctl -u openclaw-mgmt --since "10 minutes ago" | grep -i upgrade
-docker compose -f /opt/openclaw/docker-compose.yml ps
+systemctl status openclaw caddy openclaw-mgmt
 ```
 
 **Xử lý thủ công:**
 ```bash
-cd /opt/openclaw
-docker compose pull openclaw
-docker compose up -d openclaw
+npm update -g openclaw@latest
+systemctl restart openclaw
 ```
 
-### 11.6 — Container restart liên tục (crash loop)
+### 11.6 — Service restart liên tục (crash loop)
 
-**Triệu chứng:** Status luôn `exited` hoặc `restarting`.
+**Triệu chứng:** Status luôn `inactive` hoặc `activating`.
 
 **Kiểm tra:**
 ```bash
-docker compose -f /opt/openclaw/docker-compose.yml logs --tail=50 openclaw
+journalctl -u openclaw --no-pager -n 50
 ```
 
 **Nguyên nhân thường gặp:**
@@ -437,7 +436,7 @@ free -m
 
 # Reset config nếu cần
 cp /etc/openclaw/config/anthropic.json /opt/openclaw/config/openclaw.json
-docker compose -f /opt/openclaw/docker-compose.yml restart openclaw
+systemctl restart openclaw
 ```
 
 ### 11.7 — Management API không phản hồi
@@ -505,14 +504,13 @@ Management API **KHÔNG có file locking**. Các thao tác đọc-sửa-ghi (rea
 
 ```bash
 # Trạng thái tất cả services
-docker compose -f /opt/openclaw/docker-compose.yml ps
-systemctl status openclaw-mgmt
+systemctl status openclaw caddy openclaw-mgmt
 
 # Logs OpenClaw
-docker compose -f /opt/openclaw/docker-compose.yml logs --tail=30 openclaw
+journalctl -u openclaw --no-pager -n 30
 
 # Logs Caddy
-docker compose -f /opt/openclaw/docker-compose.yml logs --tail=30 caddy
+journalctl -u caddy --no-pager -n 30
 
 # Logs Management API
 journalctl -u openclaw-mgmt --since "30 minutes ago" --no-pager
@@ -557,7 +555,8 @@ curl -s -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/system | 
 cd /opt/openclaw
 
 # Stop everything
-docker compose down
+systemctl stop openclaw
+systemctl stop caddy
 
 # Reset config
 cp /etc/openclaw/config/anthropic.json config/openclaw.json
@@ -566,11 +565,12 @@ jq --arg t "$TOKEN" '.gateway.auth.token = $t' config/openclaw.json > /tmp/oc.js
 mv /tmp/oc.json config/openclaw.json
 
 # Restart
-docker compose up -d
+systemctl start openclaw
+systemctl start caddy
 systemctl restart openclaw-mgmt
 
 # Verify
-docker compose ps
+systemctl status openclaw caddy openclaw-mgmt
 curl -s -H "Authorization: Bearer $(grep OPENCLAW_MGMT_API_KEY .env | cut -d= -f2)" \
   http://localhost:9998/api/status | jq .
 ```

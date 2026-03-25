@@ -88,11 +88,11 @@ Thông tin tổng quan dịch vụ.
   "ok": true,
   "domain": "openclaw.example.com",
   "ip": "180.93.138.155",
-  "dashboardUrl": "https://openclaw.example.com?token=abc...",
+  "pairUrl": "http://180.93.138.155:9998/pair?token=abc...",
   "gatewayToken": "abc123...",
   "mgmtApiKey": "def456...7890",
   "status": "running",
-  "version": "latest"
+  "version": "1.0.0"
 }
 ```
 
@@ -100,10 +100,10 @@ Thông tin tổng quan dịch vụ.
 |---|---|---|
 | `domain` | string/null | Domain đang dùng (null nếu dùng IP) |
 | `ip` | string | IP của VPS |
-| `dashboardUrl` | string | URL truy cập Dashboard (có token) |
-| `gatewayToken` | string | Token truy cập Dashboard |
+| `pairUrl` | string | URL ghép nối thiết bị (có token) |
+| `gatewayToken` | string | Token truy cập |
 | `mgmtApiKey` | string | Management API Key (hiển thị 8 ký tự đầu + 4 cuối) |
-| `status` | string | `running` / `stopped` / `exited` / `not_found` |
+| `status` | string | `running` / `stopped` / `inactive` / `not_found` |
 | `version` | string | Phiên bản OpenClaw |
 
 **Ví dụ:**
@@ -116,7 +116,7 @@ curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/info
 
 ### GET /api/status
 
-Trạng thái chi tiết các container.
+Trạng thái chi tiết các service.
 
 **Response:**
 
@@ -130,7 +130,7 @@ Trạng thái chi tiết các container.
   "caddy": {
     "status": "running"
   },
-  "version": "latest",
+  "version": "1.0.0",
   "gatewayPort": "18789"
 }
 ```
@@ -168,8 +168,8 @@ Thông tin hệ thống (CPU, RAM, ổ đĩa, OS).
     "available": "65G",
     "usagePercent": "19%"
   },
-  "nodeVersion": "v22.0.0",
-  "dockerVersion": "Docker version 27.0.0"
+  "nodeVersion": "v24.0.0",
+  "openclawVersion": "1.0.0"
 }
 ```
 
@@ -196,7 +196,7 @@ Xem domain và trạng thái SSL hiện tại.
   "ip": "180.93.138.155",
   "ssl": true,
   "selfSignedSSL": false,
-  "caddyfile": "openclaw.example.com {\n    tls {\n        issuer acme {...}\n    }\n    reverse_proxy openclaw:18789\n}"
+  "caddyfile": "openclaw.example.com {\n    tls {\n        issuer acme {...}\n    }\n    reverse_proxy 127.0.0.1:18789\n}"
 }
 ```
 
@@ -266,16 +266,14 @@ curl -X PUT -H "Authorization: Bearer $MGMT_KEY" \
 
 ### GET /api/version
 
-Xem phiên bản Docker image đang dùng.
+Xem phiên bản OpenClaw đang dùng.
 
 **Response:**
 
 ```json
 {
   "ok": true,
-  "version": "latest",
-  "image": "ghcr.io/openclaw/openclaw:latest",
-  "digest": "sha256:abc123..."
+  "version": "1.0.0"
 }
 ```
 
@@ -289,7 +287,7 @@ curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/version
 
 ### POST /api/upgrade
 
-Pull image mới nhất và tạo lại container (chạy ngầm).
+Cập nhật OpenClaw lên phiên bản mới nhất (chạy ngầm).
 
 **Request body:** Không
 
@@ -302,7 +300,7 @@ Pull image mới nhất và tạo lại container (chạy ngầm).
 }
 ```
 
-> Quá trình upgrade chạy ngầm. Dùng `/api/status` để kiểm tra khi nào container `running` trở lại.
+> Quá trình upgrade chạy ngầm. Dùng `/api/status` để kiểm tra khi nào service `running` trở lại.
 
 **Ví dụ:**
 
@@ -316,7 +314,7 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/upgrad
 
 ### POST /api/restart
 
-Restart container OpenClaw.
+Restart service OpenClaw.
 
 **Response:**
 
@@ -337,7 +335,7 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/restar
 
 ### POST /api/stop
 
-Dừng container OpenClaw.
+Dừng service OpenClaw.
 
 **Response:**
 
@@ -358,7 +356,7 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/stop
 
 ### POST /api/start
 
-Khởi động container OpenClaw.
+Khởi động service OpenClaw.
 
 **Response:**
 
@@ -379,7 +377,7 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/start
 
 ### POST /api/rebuild
 
-Tạo lại container (docker compose down + up).
+Restart lại OpenClaw và Caddy.
 
 **Response:**
 
@@ -437,7 +435,7 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" \
 
 ### GET /api/logs
 
-Xem logs container.
+Xem logs service.
 
 **Query parameters:**
 
@@ -856,7 +854,7 @@ curl -X DELETE -H "Authorization: Bearer $MGMT_KEY" \
 
 ### POST /api/cli
 
-Chạy lệnh OpenClaw CLI trong container.
+Chạy lệnh OpenClaw CLI.
 
 **Request body:**
 
@@ -868,7 +866,7 @@ Chạy lệnh OpenClaw CLI trong container.
 
 | Trường | Bắt buộc | Mô tả |
 |---|---|---|
-| `command` | Có | Lệnh CLI (không chứa ký tự đặc biệt: `;`, `&`, `\|`, `` ` ``, `$`, `(`, `)`, `{`, `}`) |
+| `command` | Có | Lệnh CLI (không chứa ký tự đặc biệt: `;`, `&`, `|`, `` ` ``, `$`, `(`, `)`, `{`, `}`) |
 
 **Response thành công:**
 

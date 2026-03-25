@@ -4,7 +4,7 @@
 
 - [1. Cập nhật qua Management API (khuyên dùng)](#1-cập-nhật-qua-management-api-khuyên-dùng)
 - [2. Cập nhật thủ công qua SSH](#2-cập-nhật-thủ-công-qua-ssh)
-- [3. Cập nhật Docker image OpenClaw](#3-cập-nhật-docker-image-openclaw)
+- [3. Cập nhật OpenClaw](#3-cập-nhật-openclaw)
 - [4. Kiểm tra sau khi cập nhật](#4-kiểm-tra-sau-khi-cập-nhật)
 
 ---
@@ -30,10 +30,9 @@ curl -X POST \
   "message": "Update complete. Management API restarting...",
   "files": [
     { "file": "/opt/openclaw-mgmt/server.js", "ok": true },
-    { "file": "/opt/openclaw/docker-compose.yml", "ok": true },
     { "file": "/etc/openclaw/config/anthropic.json", "ok": true },
     { "file": "/etc/openclaw/config/openai.json", "ok": true },
-    { "file": "/etc/openclaw/config/gemini.json", "ok": true },
+    { "file": "/etc/openclaw/config/gemini.json", "ok": true }
   ]
 }
 ```
@@ -43,7 +42,6 @@ curl -X POST \
 | File | Đường dẫn trên VPS | Mô tả |
 |------|-------------------|-------|
 | server.js | `/opt/openclaw-mgmt/server.js` | Management API server |
-| docker-compose.yml | `/opt/openclaw/docker-compose.yml` | Docker Compose config |
 | anthropic.json | `/etc/openclaw/config/anthropic.json` | Template config Anthropic |
 | openai.json | `/etc/openclaw/config/openai.json` | Template config OpenAI |
 | gemini.json | `/etc/openclaw/config/gemini.json` | Template config Gemini |
@@ -63,13 +61,10 @@ ssh root@<VPS_IP>
 ### Bước 1: Download file mới từ GitHub
 
 ```bash
-REPO_RAW="https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main"
+REPO_RAW="https://raw.githubusercontent.com/tinovn/vps-openclaw-management/v2"
 
 # Management API
 curl -fsSL "$REPO_RAW/management-api/server.js" -o /opt/openclaw-mgmt/server.js
-
-# Docker Compose
-curl -fsSL "$REPO_RAW/docker-compose.yml" -o /opt/openclaw/docker-compose.yml
 
 # Config templates
 curl -fsSL "$REPO_RAW/config/anthropic.json" -o /etc/openclaw/config/anthropic.json
@@ -85,20 +80,11 @@ systemctl restart openclaw-mgmt
 systemctl status openclaw-mgmt
 ```
 
-### Bước 3: Áp dụng thay đổi Docker Compose (nếu có service mới)
-
-```bash
-cd /opt/openclaw
-docker compose up -d
-```
-
-Lệnh `docker compose up -d` sẽ tự tạo thêm container mới nếu `docker-compose.yml` có thêm service, mà không ảnh hưởng container đang chạy.
-
 ---
 
-## 3. Cập nhật Docker image OpenClaw
+## 3. Cập nhật OpenClaw
 
-Để cập nhật Docker image OpenClaw (không phải Management API), dùng endpoint `/api/upgrade`:
+Để cập nhật OpenClaw lên phiên bản mới nhất, dùng endpoint `/api/upgrade`:
 
 ```bash
 curl -X POST \
@@ -109,9 +95,8 @@ curl -X POST \
 Hoặc thủ công qua SSH:
 
 ```bash
-cd /opt/openclaw
-docker compose pull openclaw
-docker compose up -d openclaw
+npm update -g openclaw@latest
+systemctl restart openclaw
 ```
 
 ---
@@ -124,14 +109,14 @@ docker compose up -d openclaw
 curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/status
 ```
 
-### Kiểm tra container
+### Kiểm tra service
 
 ```bash
 # Qua API
 curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/status
 
 # Qua SSH
-docker ps
+systemctl status openclaw caddy openclaw-mgmt
 ```
 
 ### Kiểm tra logs nếu có lỗi
@@ -140,6 +125,6 @@ docker ps
 # Management API logs
 journalctl -u openclaw-mgmt -f --no-pager -n 50
 
-# OpenClaw container logs
-cd /opt/openclaw && docker compose logs -f --tail=50
+# OpenClaw logs
+journalctl -u openclaw -f --no-pager -n 50
 ```

@@ -138,7 +138,7 @@ File cấu hình: `/opt/openclaw/config/openclaw.json`
     "auth": {
       "token": "<gateway-token>"
     },
-    "trustedProxies": ["172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
+    "trustedProxies": ["127.0.0.1/32", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": true
@@ -151,8 +151,8 @@ File cấu hình: `/opt/openclaw/config/openclaw.json`
 |---|---|---|
 | `mode` | Chế độ gateway | `"local"` |
 | `bind` | Interface binding | `"lan"` |
-| `auth.token` | Token xác thực Dashboard | Sinh tự động (64-char hex) |
-| `trustedProxies` | Dải IP được tin cậy (Caddy proxy) | Docker + private networks |
+| `auth.token` | Token xác thực | Sinh tự động (64-char hex) |
+| `trustedProxies` | Dải IP được tin cậy (Caddy proxy) | Localhost + private networks |
 | `controlUi.enabled` | Bật/tắt giao diện web | `true` |
 | `controlUi.allowInsecureAuth` | Bỏ qua device pairing | `true` |
 
@@ -174,7 +174,7 @@ File cấu hình: `/opt/openclaw/config/openclaw.json`
 |---|---|---|
 | `headless` | Chế độ headless (không UI) | `true` |
 | `defaultProfile` | Tên browser profile | `"openclaw"` |
-| `noSandbox` | Tắt sandbox (cần cho Docker) | `true` |
+| `noSandbox` | Tắt sandbox (cần cho bare-metal) | `true` |
 
 ---
 

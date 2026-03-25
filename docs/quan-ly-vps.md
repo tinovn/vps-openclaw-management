@@ -1,8 +1,8 @@
-# Quản lý VPS & Docker
+# Quản lý VPS
 
 ## Mục lục
 
-- [1. Lệnh Docker thường dùng](#1-lệnh-docker-thường-dùng)
+- [1. Lệnh quản lý thường dùng](#1-lệnh-quản-lý-thường-dùng)
 - [2. Cấu hình Domain + SSL](#2-cấu-hình-domain--ssl)
 - [3. Nâng cấp phiên bản](#3-nâng-cấp-phiên-bản)
 - [4. Xem thông tin hệ thống](#4-xem-thông-tin-hệ-thống)
@@ -11,25 +11,21 @@
 
 ---
 
-## 1. Lệnh Docker thường dùng
+## 1. Lệnh quản lý thường dùng
 
 SSH vào VPS và chạy các lệnh sau:
-
-```bash
-cd /opt/openclaw
-```
 
 ### Xem logs
 
 ```bash
 # Xem logs OpenClaw (follow mode)
-docker compose logs -f openclaw
+journalctl -u openclaw -f
 
 # Xem logs Caddy (reverse proxy)
-docker compose logs -f caddy
+journalctl -u caddy -f
 
 # Xem 200 dòng cuối
-docker compose logs --tail=200 openclaw
+journalctl -u openclaw --no-pager -n 200
 ```
 
 Hoặc qua API:
@@ -42,7 +38,7 @@ curl -H "Authorization: Bearer $MGMT_KEY" \
 ### Restart
 
 ```bash
-docker compose restart openclaw
+systemctl restart openclaw
 ```
 
 Hoặc qua API:
@@ -56,10 +52,10 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" \
 
 ```bash
 # Dừng
-docker compose stop openclaw
+systemctl stop openclaw
 
 # Khởi động lại
-docker compose start openclaw
+systemctl start openclaw
 ```
 
 Hoặc qua API:
@@ -72,10 +68,10 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/stop
 curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/start
 ```
 
-### Rebuild (tạo lại container)
+### Rebuild (restart lại services)
 
 ```bash
-docker compose down && docker compose up -d
+systemctl restart openclaw && systemctl restart caddy
 ```
 
 Hoặc qua API:
@@ -87,7 +83,7 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/rebuil
 ### Xem trạng thái
 
 ```bash
-docker compose ps
+systemctl status openclaw caddy openclaw-mgmt
 ```
 
 Hoặc qua API:
@@ -96,11 +92,11 @@ Hoặc qua API:
 curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/status
 ```
 
-### Chạy lệnh CLI trong container
+### Chạy lệnh CLI
 
 ```bash
-docker compose exec openclaw node dist/index.js models scan
-docker compose exec openclaw node dist/index.js config get
+HOME=/opt/openclaw openclaw models scan
+HOME=/opt/openclaw openclaw config get
 ```
 
 Hoặc qua API:
@@ -161,7 +157,7 @@ openclaw.example.com {
             dir https://acme-v02.api.letsencrypt.org/directory
         }
     }
-    reverse_proxy openclaw:18789
+    reverse_proxy 127.0.0.1:18789
 }
 ```
 
@@ -169,14 +165,14 @@ openclaw.example.com {
 ```
 180.93.138.155 {
     tls internal
-    reverse_proxy openclaw:18789
+    reverse_proxy 127.0.0.1:18789
 }
 ```
 
 Sau khi sửa, restart Caddy:
 
 ```bash
-docker compose restart caddy
+systemctl restart caddy
 ```
 
 ---
@@ -186,8 +182,7 @@ docker compose restart caddy
 ### Qua SSH
 
 ```bash
-cd /opt/openclaw
-docker compose pull && docker compose up -d
+npm update -g openclaw@latest && systemctl restart openclaw
 ```
 
 ### Qua API
@@ -196,7 +191,7 @@ docker compose pull && docker compose up -d
 curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/upgrade
 ```
 
-> API trả về ngay `202 Accepted`, quá trình pull image chạy ngầm. Kiểm tra trạng thái bằng `/api/status`.
+> API trả về ngay `202 Accepted`, quá trình cập nhật chạy ngầm. Kiểm tra trạng thái bằng `/api/status`.
 
 ### Xem version hiện tại
 
@@ -233,8 +228,8 @@ Kết quả mẫu:
     "available": "65G",
     "usagePercent": "19%"
   },
-  "nodeVersion": "v22.0.0",
-  "dockerVersion": "Docker version 27.0.0"
+  "nodeVersion": "v24.0.0",
+  "openclawVersion": "1.0.0"
 }
 ```
 
@@ -253,10 +248,10 @@ curl -X POST \
 ```
 
 Hệ thống sẽ:
-1. Dừng tất cả container
-2. Xóa dữ liệu và volumes
+1. Dừng service OpenClaw
+2. Xóa dữ liệu (`data/`)
 3. Khôi phục cấu hình mặc định (Anthropic)
-4. Khởi động lại
+4. Khởi động lại service
 
 > Phải gửi `{"confirm": "RESET"}` để xác nhận. Nếu không sẽ báo lỗi.
 
@@ -268,23 +263,23 @@ Hệ thống sẽ:
 
 ```bash
 # Kiểm tra trạng thái
-docker compose ps
+systemctl status openclaw caddy openclaw-mgmt
 
 # Xem logs lỗi
-docker compose logs --tail=50 openclaw
+journalctl -u openclaw --no-pager -n 50
 
 # Thử restart
-docker compose restart openclaw
+systemctl restart openclaw
 
 # Nếu vẫn lỗi, rebuild
-docker compose down && docker compose up -d
+systemctl restart openclaw && systemctl restart caddy
 ```
 
 ### Không truy cập được Dashboard
 
-1. **Kiểm tra container đang chạy:**
+1. **Kiểm tra service đang chạy:**
    ```bash
-   docker compose ps
+   systemctl status openclaw caddy openclaw-mgmt
    ```
 
 2. **Kiểm tra firewall:**
@@ -295,7 +290,7 @@ docker compose down && docker compose up -d
 
 3. **Kiểm tra Caddy:**
    ```bash
-   docker compose logs caddy
+   journalctl -u caddy
    ```
 
 4. **Kiểm tra DNS** (nếu dùng domain):
@@ -337,7 +332,7 @@ docker compose down && docker compose up -d
 
 2. **Kiểm tra Caddy logs:**
    ```bash
-   docker compose logs caddy | grep -i "tls\|acme\|certificate"
+   journalctl -u caddy | grep -i "tls\|acme\|certificate"
    ```
 
 3. **Thử đổi domain lại:**

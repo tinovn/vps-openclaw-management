@@ -38,7 +38,8 @@ data: {"type":"exit","code":0}
 
 | Nhóm | Lệnh |
 |------|------|
-| Docker Compose | `docker compose ps/logs/restart/pull/up/down/exec/stats/images/top/config` |
+| Systemd | `systemctl status/restart/stop/start openclaw` · `systemctl status/restart caddy` |
+| Journalctl | `journalctl -u openclaw` · `journalctl -u caddy` |
 | OpenClaw CLI | `openclaw <cmd>` · `claw <cmd>` |
 | Hệ thống | `df` · `free` · `uptime` · `ps` · `date` · `hostname` · `uname` |
 
@@ -147,14 +148,12 @@ class TerminalWidget extends Component
     public string $sessionKey = '';
 
     public array $quickCmds = [
-        ['label' => 'status',      'cmd' => 'docker compose ps'],
-        ['label' => 'logs',        'cmd' => 'docker compose logs --tail=80 openclaw'],
-        ['label' => 'logs -f',     'cmd' => 'docker compose logs -f openclaw'],
-        ['label' => 'restart',     'cmd' => 'docker compose restart openclaw'],
-        ['label' => 'pull',        'cmd' => 'docker compose pull openclaw'],
-        ['label' => 'up -d',       'cmd' => 'docker compose up -d'],
-        ['label' => 'down',        'cmd' => 'docker compose down'],
-        ['label' => 'stats',       'cmd' => 'docker compose stats --no-stream openclaw'],
+        ['label' => 'status',      'cmd' => 'systemctl status openclaw caddy'],
+        ['label' => 'logs',        'cmd' => 'journalctl -u openclaw --no-pager -n 80'],
+        ['label' => 'logs -f',     'cmd' => 'journalctl -u openclaw -f'],
+        ['label' => 'restart',     'cmd' => 'systemctl restart openclaw'],
+        ['label' => 'upgrade',     'cmd' => 'npm update -g openclaw@latest'],
+        ['label' => 'caddy logs',  'cmd' => 'journalctl -u caddy --no-pager -n 30'],
         ['label' => 'df',          'cmd' => 'df -h'],
         ['label' => 'free',        'cmd' => 'free -h'],
         ['label' => 'uptime',      'cmd' => 'uptime'],
