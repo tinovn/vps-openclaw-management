@@ -11,10 +11,12 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '1.0.29';
+const MGMT_VERSION = '2.0.0';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
-const COMPOSE_CMD = `docker compose -f ${COMPOSE_DIR}/docker-compose.yml`;
+const OPENCLAW_BIN = 'openclaw';
+const OPENCLAW_SERVICE = 'openclaw';
+const CADDY_SERVICE = 'caddy';
 const CONFIG_DIR = `${COMPOSE_DIR}/config`;
 const ENV_FILE = `${COMPOSE_DIR}/.env`;
 const CADDYFILE = `${COMPOSE_DIR}/Caddyfile`;
@@ -308,27 +310,40 @@ function parseTerminalCmd(cmdStr) {
   if (!parts.length) return { valid: false, error: 'Empty command' };
   const base = parts[0].toLowerCase();
 
-  // docker compose <subcommand> [args...]
-  if (base === 'docker' && parts[1] === 'compose') {
-    const sub = parts[2];
-    const allowed = ['ps', 'logs', 'restart', 'pull', 'up', 'down', 'exec', 'stats', 'images', 'top', 'config', 'ls'];
-    if (!sub || !allowed.includes(sub)) {
-      return { valid: false, error: 'Allowed docker compose subcommands: ' + allowed.join(', ') };
+  // systemctl <action> <service>
+  if (base === 'systemctl') {
+    const action = parts[1];
+    const service = parts[2];
+    const allowedActions = ['status', 'restart', 'stop', 'start'];
+    const allowedServices = [OPENCLAW_SERVICE, CADDY_SERVICE, 'openclaw-mgmt'];
+    if (!action || !allowedActions.includes(action)) {
+      return { valid: false, error: 'Allowed: systemctl ' + allowedActions.join('/') + ' ' + allowedServices.join('/') };
     }
-    const rest = parts.slice(2);
-    // Auto-inject -T for exec (no TTY for non-interactive streaming)
-    if (sub === 'exec' && !rest.includes('-T') && !rest.includes('-t')) {
-      rest.splice(1, 0, '-T');
+    if (!service || !allowedServices.includes(service)) {
+      return { valid: false, error: 'Allowed services: ' + allowedServices.join(', ') };
     }
-    return { valid: true, argv: ['docker', 'compose', '-f', COMPOSE_DIR + '/docker-compose.yml', ...rest] };
+    return { valid: true, argv: ['systemctl', action, service] };
   }
 
-  // openclaw / claw → docker compose exec -T openclaw node dist/index.js <args>
+  // journalctl -u <service> [args...]
+  if (base === 'journalctl') {
+    const allowedServices = [OPENCLAW_SERVICE, CADDY_SERVICE, 'openclaw-mgmt'];
+    const uIdx = parts.indexOf('-u');
+    const service = uIdx >= 0 ? parts[uIdx + 1] : null;
+    if (!service || !allowedServices.includes(service)) {
+      return { valid: false, error: 'Usage: journalctl -u ' + allowedServices.join('/') + ' [--no-pager -n 100 | -f]' };
+    }
+    return { valid: true, argv: parts };
+  }
+
+  // openclaw / claw → direct CLI
   if (base === 'openclaw' || base === 'claw') {
-    return {
-      valid: true,
-      argv: ['docker', 'compose', '-f', COMPOSE_DIR + '/docker-compose.yml', 'exec', '-T', 'openclaw', 'node', 'dist/index.js', ...parts.slice(1)]
-    };
+    return { valid: true, argv: [OPENCLAW_BIN, ...parts.slice(1)] };
+  }
+
+  // npm update -g openclaw
+  if (base === 'npm' && parts[1] === 'update' && parts[2] === '-g' && parts[3] === 'openclaw') {
+    return { valid: true, argv: ['npm', 'update', '-g', 'openclaw'] };
   }
 
   // Safe system commands
@@ -343,7 +358,7 @@ function parseTerminalCmd(cmdStr) {
   };
   if (sysMap[base]) return { valid: true, argv: sysMap[base]() };
 
-  return { valid: false, error: 'Command not allowed. Use: docker compose ..., openclaw ..., df, free, uptime, ps, date' };
+  return { valid: false, error: 'Command not allowed. Use: systemctl ..., journalctl ..., openclaw ..., npm update -g openclaw, df, free, uptime, ps, date' };
 }
 
 // --- Route matching ---
@@ -782,28 +797,32 @@ function pruneOAuthSessions() {
   }
 }
 
-// --- Docker compose helpers ---
-function dockerCompose(cmd, timeout = 60000) {
-  return shell(`${COMPOSE_CMD} ${cmd}`, timeout);
+// --- Systemd / bare-metal helpers ---
+function systemctl(action, service = OPENCLAW_SERVICE, timeout = 30000) {
+  return shell(`systemctl ${action} ${service}`, timeout);
 }
 
-function dockerExec(cmd, timeout = 30000) {
-  return shell(`${COMPOSE_CMD} exec -T openclaw ${cmd}`, timeout);
+function openclawExec(cmd, timeout = 30000) {
+  return shell(`${OPENCLAW_BIN} ${cmd}`, timeout);
 }
 
-function getContainerStatus() {
+function getServiceStatus(service = OPENCLAW_SERVICE) {
   try {
-    const out = shell(`docker inspect openclaw --format '{{.State.Status}} {{.State.StartedAt}}' 2>/dev/null`);
-    const [status, startedAt] = out.split(' ');
-    return { status, startedAt };
+    const active = shell(`systemctl is-active ${service} 2>/dev/null`).trim();
+    let startedAt = null;
+    try {
+      const ts = shell(`systemctl show ${service} -p ActiveEnterTimestamp --value 2>/dev/null`).trim();
+      if (ts) startedAt = new Date(ts).toISOString();
+    } catch {}
+    const statusMap = { active: 'running', inactive: 'exited', failed: 'exited', activating: 'restarting' };
+    return { status: statusMap[active] || active, startedAt };
   } catch {
     return { status: 'not_found', startedAt: null };
   }
 }
 
-function restartContainer(service = 'openclaw') {
-  dockerCompose(`up -d ${service}`, 60000);
-  dockerCompose(`restart ${service}`, 60000);
+function restartService(service = OPENCLAW_SERVICE) {
+  systemctl('restart', service, 60000);
 }
 
 // =============================================================================
@@ -824,7 +843,7 @@ function startDevicePoll() {
     }
     try {
       const output = execSync(
-        'docker exec openclaw node dist/index.js devices list --json 2>&1',
+        `${OPENCLAW_BIN} devices list --json 2>&1`,
         { encoding: 'utf8', timeout: 15000 }
       );
       const jsonMatch = output.trim().match(/\{[\s\S]*\}$/);
@@ -833,7 +852,7 @@ function startDevicePoll() {
       const pending = (data.pending || []).filter(d => d.requestId);
       for (const d of pending) {
         try {
-          execSync(`docker exec openclaw node dist/index.js devices approve ${d.requestId} 2>&1`, { timeout: 15000 });
+          execSync(`${OPENCLAW_BIN} devices approve ${d.requestId} 2>&1`, { timeout: 15000 });
           console.log(`[Devices] Auto-approved: ${d.deviceId} (${d.requestId})`);
         } catch (e) { console.error(`[Devices] approve failed ${d.requestId}:`, e.message?.slice(0, 200)); }
       }
@@ -1093,7 +1112,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
       const serverIP = getServerIP();
-      const { status } = getContainerStatus();
+      const { status } = getServiceStatus();
       // Domain from .env; fallback to legacy Caddyfile when .env has no DOMAIN
       const rawDomain = getConfiguredDomainRaw();
       const domain = rawDomain && !/^https?:\/\//.test(rawDomain) ? rawDomain : null;
@@ -1150,13 +1169,10 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'GET', '/api/status')) {
     try {
-      const { status, startedAt } = getContainerStatus();
+      const { status, startedAt } = getServiceStatus();
 
       // Caddy status
-      let caddyStatus = 'not_found';
-      try {
-        caddyStatus = shell("docker inspect caddy --format '{{.State.Status}}' 2>/dev/null");
-      } catch {}
+      const { status: caddyStatus } = getServiceStatus(CADDY_SERVICE);
 
       return json(res, 200, {
         ok: true,
@@ -1229,12 +1245,11 @@ const server = http.createServer(async (req, res) => {
         return json(res, 500, { ok: false, error: 'Failed to download Caddyfile: ' + dlErr.message });
       }
 
-      // Restart Caddy container
+      // Restart Caddy service
       try {
-        dockerCompose('restart caddy', 30000);
-        // Wait and check
+        systemctl('restart', CADDY_SERVICE, 30000);
         execSync('sleep 3');
-        const caddyStatus = shell("docker inspect caddy --format '{{.State.Status}}' 2>/dev/null");
+        const { status: caddyStatus } = getServiceStatus(CADDY_SERVICE);
         if (caddyStatus === 'running') {
           return json(res, 200, { ok: true, domain });
         }
@@ -1243,7 +1258,7 @@ const server = http.createServer(async (req, res) => {
       // Rollback: revert domain to IP in .env
       setEnvValue('DOMAIN', `http://${serverIP}`);
       setEnvValue('CADDY_TLS', '');
-      try { dockerCompose('restart caddy', 15000); } catch {}
+      try { systemctl('restart', CADDY_SERVICE, 15000); } catch {}
       return json(res, 500, { ok: false, error: 'Caddy failed to start with this domain. Rolled back to IP config.' });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -1253,35 +1268,30 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'GET', '/api/version')) {
     try {
-      let currentImage = 'unknown';
+      let clawVersion = 'unknown';
       try {
-        currentImage = shell("docker inspect openclaw --format '{{.Config.Image}}' 2>/dev/null");
-      } catch {}
-
-      let currentDigest = 'unknown';
-      try {
-        currentDigest = shell("docker inspect openclaw --format '{{.Image}}' 2>/dev/null");
+        clawVersion = shell(`${OPENCLAW_BIN} --version 2>/dev/null`).trim();
       } catch {}
 
       return json(res, 200, {
         ok: true,
         version: getEnvValue('OPENCLAW_VERSION') || 'latest',
-        image: currentImage,
-        digest: currentDigest
+        clawVersion
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
   // =========================================================================
-  // POST /api/upgrade — Pull latest image + recreate
+  // POST /api/upgrade — Update openclaw + restart
   // =========================================================================
   if (route(req, 'POST', '/api/upgrade')) {
     try {
-      exec(`cd ${COMPOSE_DIR} && ${COMPOSE_CMD} pull openclaw && ${COMPOSE_CMD} up -d openclaw`,
+      exec(`npm update -g openclaw@latest`,
         { timeout: 300000 }, (err, stdout, stderr) => {
           console.log('[MGMT] Upgrade completed:', err ? 'FAILED' : 'OK');
           if (stdout) console.log(stdout);
           if (stderr) console.error(stderr);
+          try { execSync(`systemctl restart ${OPENCLAW_SERVICE}`, { timeout: 30000 }); } catch {}
         });
       return json(res, 202, { ok: true, message: 'Upgrade started. Check /api/status for progress.' });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -1292,9 +1302,9 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'POST', '/api/restart')) {
     try {
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
       execSync('sleep 2');
-      const { status } = getContainerStatus();
+      const { status } = getServiceStatus();
       return json(res, 200, { ok: status === 'running', status });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -1304,7 +1314,7 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'POST', '/api/stop')) {
     try {
-      dockerCompose('stop openclaw');
+      systemctl('stop', OPENCLAW_SERVICE);
       return json(res, 200, { ok: true, message: 'OpenClaw stopped.' });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -1314,9 +1324,9 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'POST', '/api/start')) {
     try {
-      dockerCompose('start openclaw');
+      systemctl('start', OPENCLAW_SERVICE);
       execSync('sleep 2');
-      const { status } = getContainerStatus();
+      const { status } = getServiceStatus();
       return json(res, 200, { ok: status === 'running', status });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -1326,10 +1336,10 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'POST', '/api/rebuild')) {
     try {
-      dockerCompose('down', 60000);
-      dockerCompose('up -d', 120000);
+      restartService(OPENCLAW_SERVICE);
+      restartService(CADDY_SERVICE);
       execSync('sleep 3');
-      const { status } = getContainerStatus();
+      const { status } = getServiceStatus();
       return json(res, 200, { ok: status === 'running', status });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -1345,8 +1355,8 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: 'Send {"confirm":"RESET"} to confirm destructive action.' });
       }
 
-      // Down all containers + remove volumes
-      dockerCompose('down -v', 60000);
+      // Stop services
+      systemctl('stop', OPENCLAW_SERVICE, 60000);
 
       // Keep .env but reset config and data
       try { execSync(`rm -rf ${CONFIG_DIR}/openclaw.json ${COMPOSE_DIR}/data`); } catch {}
@@ -1365,10 +1375,10 @@ const server = http.createServer(async (req, res) => {
         } catch {}
       }
 
-      // Bring everything back up
-      dockerCompose('up -d', 120000);
+      // Start service back up
+      systemctl('start', OPENCLAW_SERVICE, 120000);
       execSync('sleep 3');
-      const { status } = getContainerStatus();
+      const { status } = getServiceStatus();
 
       return json(res, 200, { ok: status === 'running', status, message: 'Reset complete. Config reverted to defaults.' });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -1388,7 +1398,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: 'Invalid service. Allowed: ' + allowed.join(', ') });
       }
 
-      const logs = dockerCompose(`logs --tail=${lines} --no-color ${service}`, 15000);
+      const logs = shell(`journalctl -u ${service} --no-pager -n ${lines} --no-hostname 2>&1`, 15000);
       return json(res, 200, { ok: true, service, lines, logs });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -1584,7 +1594,7 @@ const server = http.createServer(async (req, res) => {
         if (!config.browser) config.browser = customTpl.browser;
 
         writeConfig(config);
-        restartContainer('openclaw');
+        restartService(OPENCLAW_SERVICE);
         return json(res, 200, { ok: true, provider, model: config.agents.defaults.model.primary });
       }
 
@@ -1635,7 +1645,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       writeConfig(config);
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 200, { ok: true, provider, model: config.agents.defaults.model.primary });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -1665,7 +1675,7 @@ const server = http.createServer(async (req, res) => {
       // 2. Write auth-profiles.json for the target agent
       setAuthProfileApiKey(providerConfig.authProfileProvider, apiKey, targetAgent);
 
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 200, { ok: true, provider, agentId: targetAgent, apiKey: sanitizeKey(apiKey) });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -1694,7 +1704,7 @@ const server = http.createServer(async (req, res) => {
         removeEnvValue(providerConfig.envKey);
       }
 
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 200, { ok: true, provider, agentId: targetAgent, removed: true });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -1791,7 +1801,7 @@ const server = http.createServer(async (req, res) => {
       if (!config.browser) config.browser = tpl.browser;
       writeConfig(config);
 
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 200, { ok: true, provider: providerName, model, baseUrl, apiKey: sanitizeKey(apiKey) });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -1883,7 +1893,7 @@ const server = http.createServer(async (req, res) => {
         if (config.models?.providers?.[providerName]) {
           config.models.providers[providerName] = { ...p };
           writeConfig(config);
-          restartContainer('openclaw');
+          restartService(OPENCLAW_SERVICE);
         }
       } catch {}
 
@@ -1935,7 +1945,7 @@ const server = http.createServer(async (req, res) => {
       try { removeEnvValue(envKey); } catch {}
       try { removeAgentApiKey('main', providerName); } catch {}
 
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 200, { ok: true, provider: providerName, removed: true });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2121,7 +2131,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       writeConfig(config);
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
       return json(res, 200, { ok: true, channel, token: sanitizeKey(body.token) });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2151,7 +2161,7 @@ const server = http.createServer(async (req, res) => {
         writeConfig(config);
       } catch {}
 
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
       return json(res, 200, { ok: true, channel, removed: true });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2208,10 +2218,10 @@ const server = http.createServer(async (req, res) => {
           config.gateway.auth.token = body.value;
           writeConfig(config);
         } catch {}
-        dockerCompose('up -d --force-recreate caddy', 60000);
+        restartService(CADDY_SERVICE);
       }
 
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
       return json(res, 200, { ok: true, key, applied: true });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2227,7 +2237,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 403, { ok: false, error: 'Cannot remove protected environment variable' });
       }
       removeEnvValue(key);
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
       return json(res, 200, { ok: true, key, removed: true });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2264,7 +2274,7 @@ const server = http.createServer(async (req, res) => {
           usagePercent: disk[3] || 'unknown'
         },
         nodeVersion: process.version,
-        dockerVersion: (() => { try { return shell('docker --version'); } catch { return 'unknown'; } })()
+        openclawVersion: (() => { try { return shell(`${OPENCLAW_BIN} --version 2>/dev/null`).trim(); } catch { return 'unknown'; } })()
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2283,7 +2293,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: 'Command contains disallowed characters' });
       }
 
-      const output = dockerExec(`node dist/index.js ${command}`, 60000);
+      const output = openclawExec(command, 60000);
       return json(res, 200, { ok: true, output });
     } catch (e) {
       const stderr = e.stderr ? e.stderr.toString() : '';
@@ -2297,7 +2307,7 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'GET', '/api/devices')) {
     try {
-      const output = dockerExec('node dist/index.js devices list', 15000);
+      const output = openclawExec('devices list', 15000);
       return json(res, 200, { ok: true, output });
     } catch (e) {
       const stderr = e.stderr ? e.stderr.toString() : '';
@@ -2316,7 +2326,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 400, { ok: false, error: 'Invalid deviceId format' });
     }
     try {
-      const output = dockerExec(`node dist/index.js devices approve ${deviceId}`, 15000);
+      const output = openclawExec(`devices approve ${deviceId}`, 15000);
       return json(res, 200, { ok: true, output });
     } catch (e) {
       const stderr = e.stderr ? e.stderr.toString() : '';
@@ -2326,7 +2336,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // POST /api/self-update — Tu dong cap nhat Management API + docker-compose + config templates
+  // POST /api/self-update — Tu dong cap nhat Management API + config templates
   // =========================================================================
   if (route(req, 'POST', '/api/self-update')) {
     try {
@@ -2358,7 +2368,6 @@ const server = http.createServer(async (req, res) => {
       ];
       const files = [
         { url: `${REPO_RAW}/management-api/server.js`, dest: `${MGMT_API_DIR}/server.js` },
-        { url: `${REPO_RAW}/docker-compose.yml`, dest: `${COMPOSE_DIR}/docker-compose.yml` },
         { url: `${REPO_RAW}/Caddyfile`, dest: `${COMPOSE_DIR}/Caddyfile` },
         ...configTemplates.map(t => ({ url: `${REPO_RAW}/config/${t}.json`, dest: `${TEMPLATES_DIR}/${t}.json` }))
       ];
@@ -2423,20 +2432,21 @@ const server = http.createServer(async (req, res) => {
         if (migrated) writeConfig(liveConfig);
       } catch {}
 
-      // Apply docker-compose changes
-      // (config migration changes mounted volume, gateway only reads config at startup)
-      let composeResult = null;
+      // Restart services after config migration
+      let restartResult = null;
       try {
-        composeResult = dockerCompose('up -d --remove-orphans', 120000);
+        restartService(OPENCLAW_SERVICE);
+        restartService(CADDY_SERVICE);
+        restartResult = 'ok';
       } catch (e) {
-        composeResult = (composeResult || '') + ' ' + e.message;
+        restartResult = e.message;
       }
 
       // Restart management API service (systemd sẽ tự start lại với code mới)
       // Dùng exec async để response kịp trả về trước khi process bị kill
       if (serverJsOk) {
         const msg = allOk ? 'Update complete. Management API restarting...' : 'server.js updated (some templates failed). Management API restarting...';
-        json(res, 200, { ok: allOk, message: msg, files: results, compose: composeResult });
+        json(res, 200, { ok: allOk, message: msg, files: results, restart: restartResult });
         setTimeout(() => {
           try { execSync('systemctl restart openclaw-mgmt', { timeout: 10000 }); } catch {}
         }, 500);
@@ -2489,7 +2499,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       setAgentApiKey(agentId, providerConfig.authProfileProvider, apiKey);
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 200, { ok: true, agentId, provider, apiKey: sanitizeKey(apiKey) });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2513,7 +2523,7 @@ const server = http.createServer(async (req, res) => {
       config.agents.list[idx].default = true;
 
       writeConfig(config);
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 200, { ok: true, defaultAgent: agentId });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2588,7 +2598,7 @@ const server = http.createServer(async (req, res) => {
 
       config.agents.list[agentIdx] = agent;
       writeConfig(config);
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 200, { ok: true, agent });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2632,7 +2642,7 @@ const server = http.createServer(async (req, res) => {
         if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true, force: true });
       }
 
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 200, { ok: true, id: agentId, removed: true });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2708,7 +2718,7 @@ const server = http.createServer(async (req, res) => {
       writeAgentAuth(id, { profiles: {} });
 
       writeConfig(config);
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 201, { ok: true, agent: newAgent });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2751,7 +2761,7 @@ const server = http.createServer(async (req, res) => {
       config.bindings.push(newBinding);
 
       writeConfig(config);
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 201, { ok: true, binding: newBinding, index: config.bindings.length - 1 });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2785,7 +2795,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       writeConfig(config);
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 200, { ok: true, index, binding: config.bindings[index] });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2805,7 +2815,7 @@ const server = http.createServer(async (req, res) => {
       const removed = config.bindings.splice(index, 1)[0];
 
       writeConfig(config);
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       return json(res, 200, { ok: true, index, removed, remaining: config.bindings.length });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2927,13 +2937,13 @@ const server = http.createServer(async (req, res) => {
           if (!config.agents.defaults.model) config.agents.defaults.model = {};
           config.agents.defaults.model.primary = finalModel;
           writeConfig(config);
-          restartContainer('openclaw');
+          restartService(OPENCLAW_SERVICE);
           switchedModel = finalModel;
         } catch (e) {
           return json(res, 200, { ok: true, agentId: session.agentId, tokensStored: true, profileKey: stored.profileKey, accountId: stored.accountId, switchedProvider: false, switchError: e.message });
         }
       } else {
-        restartContainer('openclaw');
+        restartService(OPENCLAW_SERVICE);
       }
 
       return json(res, 200, {
@@ -2968,7 +2978,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       storeOAuthTokens(tokens, agentId);
-      restartContainer('openclaw');
+      restartService(OPENCLAW_SERVICE);
 
       const expiresInMs = tokens.expires ? tokens.expires - Date.now() : null;
       return json(res, 200, {
@@ -3056,14 +3066,13 @@ html,body{height:100%;overflow:hidden;background:#0d1117;color:#c9d1d9;font-fami
   </div>
   <div id="qbar">
     <span class="ql">Quick:</span>
-    <button class="qb" onclick="q('docker compose ps')">status</button>
-    <button class="qb" onclick="q('docker compose logs --tail=80 openclaw')">logs</button>
-    <button class="qb" onclick="q('docker compose logs -f openclaw')">logs -f</button>
-    <button class="qb" onclick="q('docker compose restart openclaw')">restart</button>
-    <button class="qb" onclick="q('docker compose pull openclaw')">pull</button>
-    <button class="qb" onclick="q('docker compose up -d')">up -d</button>
-    <button class="qb" onclick="q('docker compose down')">down</button>
-    <button class="qb" onclick="q('docker compose stats --no-stream openclaw')">stats</button>
+    <button class="qb" onclick="q('systemctl status openclaw')">status</button>
+    <button class="qb" onclick="q('journalctl -u openclaw --no-pager -n 80')">logs</button>
+    <button class="qb" onclick="q('journalctl -u openclaw -f')">logs -f</button>
+    <button class="qb" onclick="q('systemctl restart openclaw')">restart</button>
+    <button class="qb" onclick="q('npm update -g openclaw')">upgrade</button>
+    <button class="qb" onclick="q('systemctl start openclaw')">start</button>
+    <button class="qb" onclick="q('systemctl stop openclaw')">stop</button>
     <button class="qb" onclick="q('df -h')">df</button>
     <button class="qb" onclick="q('free -h')">free</button>
     <button class="qb" onclick="q('uptime')">uptime</button>
@@ -3184,7 +3193,7 @@ window.addEventListener('DOMContentLoaded',function(){
   if(tok)document.getElementById('tok').placeholder='Key saved \u2014 click Connect';
   term.write('\\x1b[1;34m OpenClaw Terminal\\x1b[0m\\r\\n');
   term.write('\\x1b[2m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\\x1b[0m\\r\\n');
-  term.write('\\x1b[2m Allowed cmds: docker compose ..., openclaw ...\\x1b[0m\\r\\n');
+  term.write('\\x1b[2m Allowed cmds: systemctl ..., journalctl ..., openclaw ...\\x1b[0m\\r\\n');
   term.write('\\x1b[2m               df, free, uptime, ps, date\\x1b[0m\\r\\n\\r\\n');
   term.write('\\x1b[2m Enter API key above and click Connect\\x1b[0m\\r\\n\\r\\n');
 });
@@ -3295,7 +3304,7 @@ try {
     const heapSize = Math.round(os.totalmem() / 1024 / 1024 * 0.8);
     setEnvValue('NODE_OPTIONS', `--max-old-space-size=${heapSize}`);
     console.log(`[Migration] Set NODE_OPTIONS=--max-old-space-size=${heapSize}`);
-    try { dockerCompose('up -d openclaw', 60000); } catch {}
+    try { restartService(OPENCLAW_SERVICE); } catch {}
   }
 } catch {}
 
@@ -3321,7 +3330,7 @@ setInterval(() => {
       const result = tryRefreshAgent(agentId);
       if (result === 'refreshed') anyRefreshed = true;
     }
-    if (anyRefreshed) restartContainer('openclaw');
+    if (anyRefreshed) restartService(OPENCLAW_SERVICE);
   } catch (e) {
     console.error(`[OAuth] Auto-refresh job error: ${e.message}`);
   }

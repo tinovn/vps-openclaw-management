@@ -1,50 +1,49 @@
-# CLAUDE.md - OpenClaw Docker Compose Deployment
+# CLAUDE.md - OpenClaw Bare-metal Deployment (v2)
 
 ## Tong quan du an
 
-He thong cai dat va quan ly **OpenClaw** tren VPS su dung Docker Compose. Bao gom:
+He thong cai dat va quan ly **OpenClaw** tren VPS chay truc tiep (bare-metal, khong Docker). Bao gom:
 - **install.sh** — Script cai dat all-in-one (HostBill hook goi qua SSH)
 - **Management API** — REST API de quan ly tu xa (doi model, API key, domain, restart, rebuild, logs...)
 
 ## Cong nghe
 
-- **Docker Compose** — Chay OpenClaw + Caddy trong containers
-- **Node.js 22** — Management API runtime (chay tren host)
-- **Caddy** — Reverse proxy + TLS tu dong (container)
+- **Node.js 24** — OpenClaw + Management API runtime
+- **OpenClaw** — Cai qua `npm install -g openclaw@latest`
+- **Caddy** — Reverse proxy + TLS tu dong (cai qua apt)
+- **systemd** — Quan ly OpenClaw, Caddy, Management API services
 - **UFW / fail2ban** — Tuong lua + chong brute-force
-- **systemd** — Quan ly Management API service
 
 ## Cau truc thu muc
 
 ```
 OpenClaw/
-├── install.sh                  # Script cai dat all-in-one
-├── docker-compose.yml          # Template Docker Compose (openclaw + caddy)
+├── install.sh                  # Script cai dat all-in-one (bare-metal)
 ├── Caddyfile                   # Template Caddy config
 ├── management-api/
 │   └── server.js               # Management API server (port 9998)
-├── config/                       # Template configs cho 18 providers
+├── config/                       # Template configs cho 18+ providers
 │   ├── anthropic.json openai.json gemini.json
 │   ├── deepseek.json groq.json together.json mistral.json xai.json
 │   ├── cerebras.json sambanova.json fireworks.json cohere.json
 │   ├── yi.json baichuan.json stepfun.json siliconflow.json
 │   └── novita.json openrouter.json minimax.json moonshot.json zhipu.json
-├── template.json               # Packer template (legacy)
+├── version.json                # Version tracking
 └── CLAUDE.md
 ```
 
 ## Cai dat
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/v2/install.sh | bash
 ```
 
 ## Tren VPS sau khi cai dat
 
 ```
 /opt/openclaw/                  # Thu muc chinh
-├── docker-compose.yml
 ├── .env                        # Environment vars (tokens, API keys)
+├── .openclaw -> config/        # Symlink (OpenClaw reads HOME/.openclaw)
 ├── Caddyfile
 ├── config/
 │   ├── openclaw.json           # Config hien tai
@@ -59,25 +58,13 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 /etc/openclaw/config/           # Template configs (khong sua)
 ├── anthropic.json
 ├── openai.json
-├── gemini.json
-├── deepseek.json
-├── groq.json
-├── together.json
-├── mistral.json
-├── xai.json
-├── cerebras.json
-├── sambanova.json
-├── fireworks.json
-├── cohere.json
-├── yi.json
-├── baichuan.json
-├── stepfun.json
-├── siliconflow.json
-├── novita.json
-├── openrouter.json
-├── minimax.json
-├── moonshot.json
+├── ...
 └── zhipu.json
+
+# Systemd services:
+# openclaw.service      — OpenClaw Gateway (port 18789)
+# caddy.service         — Caddy reverse proxy (port 80/443)
+# openclaw-mgmt.service — Management API (port 9998)
 ```
 
 ## Management API
@@ -88,18 +75,19 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 
 | Method | Path | Mo ta |
 |--------|------|-------|
+| `GET` | `/pair` | Bat device auto-approve + redirect toi gateway (public) |
 | `GET` | `/api/info` | Thong tin service (domain, IP, token, status) |
-| `GET` | `/api/status` | Trang thai container |
+| `GET` | `/api/status` | Trang thai services |
 | `GET` | `/api/domain` | Xem domain config |
 | `PUT` | `/api/domain` | Doi domain + SSL |
-| `GET` | `/api/version` | Version + image info |
-| `POST` | `/api/upgrade` | Pull image moi + recreate |
-| `POST` | `/api/restart` | Restart container |
-| `POST` | `/api/stop` | Stop container |
-| `POST` | `/api/start` | Start container |
-| `POST` | `/api/rebuild` | Down + Up (recreate) |
+| `GET` | `/api/version` | Version info |
+| `POST` | `/api/upgrade` | Update openclaw (npm) + restart |
+| `POST` | `/api/restart` | Restart service |
+| `POST` | `/api/stop` | Stop service |
+| `POST` | `/api/start` | Start service |
+| `POST` | `/api/rebuild` | Restart openclaw + caddy |
 | `POST` | `/api/reset` | Xoa data, tao lai tu dau |
-| `GET` | `/api/logs` | Container logs |
+| `GET` | `/api/logs` | Service logs (journalctl) |
 | `GET` | `/api/providers` | List tat ca providers (built-in + custom) |
 | `GET` | `/api/config` | Xem config (model, provider, keys masked) |
 | `PUT` | `/api/config/provider` | Doi provider + model (built-in) |
@@ -116,8 +104,8 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 | `PUT` | `/api/env/:key` | Set env var |
 | `DELETE` | `/api/env/:key` | Xoa env var |
 | `GET` | `/api/system` | System info |
-| `POST` | `/api/cli` | Proxy CLI commands vao container |
-| `POST` | `/api/self-update` | Cap nhat Management API + docker-compose + config templates tu GitHub |
+| `POST` | `/api/cli` | Chay CLI commands truc tiep |
+| `POST` | `/api/self-update` | Cap nhat Management API + config templates tu GitHub |
 
 #### Multi-Agent Management
 
@@ -142,12 +130,6 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 | `GET` | `/api/auth/user` | Xem login user hien tai (protected) |
 | `PUT` | `/api/auth/change-password` | Doi password (protected) |
 | `DELETE` | `/api/auth/user` | Xoa login credentials (protected) |
-
-Login credentials luu trong `.env`:
-- `OPENCLAW_LOGIN_USER` — username
-- `OPENCLAW_LOGIN_PASS` — scrypt hash (salt:hash)
-
-Flow: User truy cap `domain/login` → nhap username/password → POST `/api/auth/login` → nhan gateway token → redirect `/#token=...`
 
 #### Routing Bindings
 
@@ -174,79 +156,28 @@ curl -X PUT -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/j
 # Rebuild
 curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/rebuild
 
-# CLI proxy
+# CLI
 curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
   -d '{"command":"models scan"}' http://localhost:9998/api/cli
 ```
 
-### Custom Provider vi du
-
-```bash
-# Tao custom provider (OpenAI-compatible endpoint)
-curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
-  -d '{"baseUrl":"https://api.example.com/v1","model":"myprovider/my-model","apiKey":"sk-xxx"}' \
-  http://localhost:9998/api/config/custom-provider
-
-# List custom providers
-curl -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/config/custom-providers
-
-# Update custom provider (them model, doi endpoint, doi key)
-curl -X PUT -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
-  -d '{"model":"another-model","modelName":"Another Model"}' \
-  http://localhost:9998/api/config/custom-provider/myprovider
-
-# Xoa custom provider
-curl -X DELETE -H "Authorization: Bearer $MGMT_KEY" \
-  http://localhost:9998/api/config/custom-provider/myprovider
-```
-
-### Multi-Agent vi du
-
-```bash
-# List agents
-curl -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/agents
-
-# Tao agent moi
-curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
-  -d '{"id":"work","name":"Work Agent","model":"anthropic/claude-sonnet-4-20250514"}' \
-  http://localhost:9998/api/agents
-
-# Set API key cho agent
-curl -X PUT -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
-  -d '{"provider":"anthropic","apiKey":"sk-ant-xxx"}' \
-  http://localhost:9998/api/agents/work/api-key
-
-# Set agent lam default
-curl -X PUT -H "Authorization: Bearer $MGMT_KEY" \
-  http://localhost:9998/api/agents/work/default
-
-# Tao routing binding (route Telegram messages toi agent "work")
-curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
-  -d '{"agentId":"work","match":{"channel":"telegram"}}' \
-  http://localhost:9998/api/bindings
-
-# Xoa agent
-curl -X DELETE -H "Authorization: Bearer $MGMT_KEY" \
-  http://localhost:9998/api/agents/work
-```
-
 ## Quy uoc
 
-- Docker image: `ghcr.io/openclaw/openclaw:latest`
-- Gateway port: 18789 (trong Docker network, Caddy proxy ra 80/443)
-- Management API port: 9998 (tren host, systemd)
+- OpenClaw binary: `openclaw` (npm global)
+- Gateway port: 18789 (Caddy proxy ra 80/443)
+- Management API port: 9998 (systemd)
 - Tokens: 64-char hex, sinh bang `openssl rand -hex 32`
 - Config templates luu tai `/etc/openclaw/config/` (khong sua)
 - Config hien tai tai `/opt/openclaw/config/openclaw.json`
 - Khong commit API key hoac token that
 
-## Lenh Docker thuong dung (tren VPS)
+## Lenh thuong dung (tren VPS)
 
 ```bash
-cd /opt/openclaw
-docker compose logs -f              # Xem logs
-docker compose restart openclaw     # Restart
-docker compose pull && docker compose up -d  # Upgrade
-docker compose down                 # Stop tat ca
-docker compose exec openclaw node dist/index.js <command>  # CLI
+systemctl status openclaw           # Trang thai
+journalctl -u openclaw -f           # Xem logs
+systemctl restart openclaw          # Restart
+systemctl stop openclaw             # Stop
+npm update -g openclaw && systemctl restart openclaw  # Upgrade
+openclaw models scan                # CLI truc tiep
 ```
