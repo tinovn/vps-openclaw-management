@@ -848,8 +848,9 @@ function approveAllPendingDevices() {
 
     let approved = 0;
     const now = Date.now();
-    for (const deviceId of keys) {
-      const device = pending[deviceId];
+    for (const key of keys) {
+      const device = pending[key];
+      const deviceId = device.deviceId || key;
       paired[deviceId] = {
         ...device,
         approvedScopes: device.scopes || [],
