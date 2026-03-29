@@ -15,7 +15,7 @@
 # Kiem tra tien trinh: tail -f /var/log/openclaw-install.log
 # =============================================================================
 
-REPO_RAW="https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main"
+REPO_RAW="https://raw.githubusercontent.com/tinovn/vps-openclaw-management/v2"
 BOOTSTRAP_DIR="/opt/openclaw"
 INSTALL_SCRIPT="${BOOTSTRAP_DIR}/openclaw-install.sh"
 INSTALL_ARGS="${BOOTSTRAP_DIR}/openclaw-install.args"
