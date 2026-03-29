@@ -898,7 +898,7 @@ function startDevicePoll() {
       return;
     }
     approveAllPendingDevices();
-  }, 2 * 1000);
+  }, 5 * 1000);
 }
 
 // =============================================================================
@@ -2344,21 +2344,22 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // GET /api/devices — List tat ca devices cho agent
+  // GET /api/devices — List tat ca devices (file I/O, khong spawn CLI)
   // =========================================================================
   if (route(req, 'GET', '/api/devices')) {
     try {
-      const output = openclawExec('devices list', 15000);
-      return json(res, 200, { ok: true, output });
+      let pending = {};
+      let paired = {};
+      try { pending = JSON.parse(fs.readFileSync(PENDING_FILE, 'utf8')); } catch {}
+      try { paired = JSON.parse(fs.readFileSync(PAIRED_FILE, 'utf8')); } catch {}
+      return json(res, 200, { ok: true, pending, paired });
     } catch (e) {
-      const stderr = e.stderr ? e.stderr.toString() : '';
-      const stdout = e.stdout ? e.stdout.toString() : '';
-      return json(res, 200, { ok: false, output: stdout || stderr || e.message });
+      return json(res, 500, { ok: false, error: e.message });
     }
   }
 
   // =========================================================================
-  // POST /api/devices/approve/:deviceId — Approve mot device
+  // POST /api/devices/approve/:deviceId — Approve mot device (file I/O)
   // =========================================================================
   if (route(req, 'POST', '/api/devices/approve/')) {
     const deviceId = req.url.replace('/api/devices/approve/', '').split('?')[0].trim();
@@ -2367,12 +2368,45 @@ const server = http.createServer(async (req, res) => {
       return json(res, 400, { ok: false, error: 'Invalid deviceId format' });
     }
     try {
-      const output = openclawExec(`devices approve ${deviceId}`, 15000);
-      return json(res, 200, { ok: true, output });
+      let pending = {};
+      try { pending = JSON.parse(fs.readFileSync(PENDING_FILE, 'utf8')); } catch {}
+      const device = pending[deviceId] || Object.values(pending).find(d => d.deviceId === deviceId);
+      if (!device) return json(res, 404, { ok: false, error: 'Device not found in pending' });
+
+      let paired = {};
+      try { paired = JSON.parse(fs.readFileSync(PAIRED_FILE, 'utf8')); } catch {}
+      const did = device.deviceId || deviceId;
+      const now = Date.now();
+      paired[did] = {
+        ...device,
+        approvedScopes: device.scopes || [],
+        tokens: {
+          [device.role || 'operator']: {
+            token: crypto.randomBytes(32).toString('base64url'),
+            expiresAtMs: now + 365 * 24 * 60 * 60 * 1000
+          }
+        },
+        createdAtMs: device.ts || now,
+        approvedAtMs: now
+      };
+      delete paired[did].requestId;
+      delete paired[did].ts;
+      delete paired[did].silent;
+      delete paired[did].isRepair;
+
+      // Remove from pending (by key or deviceId)
+      for (const key of Object.keys(pending)) {
+        if (key === deviceId || (pending[key].deviceId === deviceId)) {
+          delete pending[key];
+        }
+      }
+
+      fs.mkdirSync(DEVICES_DIR, { recursive: true });
+      fs.writeFileSync(PAIRED_FILE, JSON.stringify(paired, null, 2), 'utf8');
+      fs.writeFileSync(PENDING_FILE, JSON.stringify(pending, null, 2), 'utf8');
+      return json(res, 200, { ok: true, approved: did });
     } catch (e) {
-      const stderr = e.stderr ? e.stderr.toString() : '';
-      const stdout = e.stdout ? e.stdout.toString() : '';
-      return json(res, 200, { ok: false, output: stdout || stderr || e.message });
+      return json(res, 500, { ok: false, error: e.message });
     }
   }
 
