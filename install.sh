@@ -502,24 +502,7 @@ for i in $(seq 1 24); do
 done
 
 # =============================================================================
-# 13. Auto-approve devices
-# =============================================================================
-log "Auto-approve pending devices..."
-DEVICES_RAW=$(openclaw devices list --json 2>&1 || true)
-DEVICES_JSON=$(echo "$DEVICES_RAW" | grep -Pzo '\{[\s\S]*\}$' | tr -d '\0' || true)
-REQUEST_IDS=$(echo "$DEVICES_JSON" | jq -r '.pending[]?.requestId // empty' 2>/dev/null || true)
-if [ -n "$REQUEST_IDS" ]; then
-    while IFS= read -r rid; do
-        openclaw devices approve "$rid" 2>/dev/null && \
-            log "Approved device request: $rid" || \
-            log "Canh bao: Khong approve duoc device request $rid"
-    done <<< "$REQUEST_IDS"
-else
-    log "Khong co device nao can approve (Management API se tu dong approve khi user pair)."
-fi
-
-# =============================================================================
-# 14. Cai dat Management API
+# 13. Cai dat Management API
 # =============================================================================
 log "Cai dat Management API..."
 curl -fsSL "${REPO_RAW}/management-api/server.js" -o ${MGMT_API_DIR}/server.js || {
