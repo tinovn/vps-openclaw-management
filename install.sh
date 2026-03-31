@@ -296,8 +296,28 @@ EOF
 # =============================================================================
 # 10. Download Caddyfile template
 # =============================================================================
-log "Download Caddyfile template..."
-curl -fsSL "${REPO_RAW}/Caddyfile" -o ${INSTALL_DIR}/Caddyfile
+log "Tao Caddyfile..."
+cat > ${INSTALL_DIR}/Caddyfile << 'CADDYEOF'
+{$DOMAIN:localhost} {
+    {$CADDY_TLS:tls internal}
+
+    # Login page + auth API -> Management API on host
+    handle /login {
+        reverse_proxy 127.0.0.1:9998
+    }
+    handle /api/auth/* {
+        reverse_proxy 127.0.0.1:9998
+    }
+
+    reverse_proxy 127.0.0.1:18789 {
+        header_up Host "localhost:18789"
+        header_up -X-Forwarded-For
+        header_up -X-Forwarded-Host
+        header_up -X-Forwarded-Proto
+        header_up -X-Real-IP
+    }
+}
+CADDYEOF
 
 # =============================================================================
 # 11. Tao config templates + default config
@@ -505,9 +525,14 @@ done
 # 13. Cai dat Management API
 # =============================================================================
 log "Cai dat Management API..."
-curl -fsSL "${REPO_RAW}/management-api/server.js" -o ${MGMT_API_DIR}/server.js || {
-    log "Canh bao: Khong tai duoc Management API server.js"
-}
+for i in 1 2 3; do
+    curl -fsSL --retry 2 "${REPO_RAW}/management-api/server.js" -o ${MGMT_API_DIR}/server.js && break
+    log "Canh bao: Lan $i - Khong tai duoc server.js, thu lai..."
+    sleep 3
+done
+if [ ! -f ${MGMT_API_DIR}/server.js ]; then
+    log "LOI: Khong tai duoc Management API server.js sau 3 lan"
+fi
 
 cat > /etc/systemd/system/openclaw-mgmt.service << EOF
 [Unit]
