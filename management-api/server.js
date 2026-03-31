@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '2.0.2';
+const MGMT_VERSION = '2.0.3';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const OPENCLAW_BIN = 'openclaw';
@@ -1441,12 +1441,17 @@ const server = http.createServer(async (req, res) => {
       const lines = Math.min(Math.max(parseInt(url.searchParams.get('lines')) || 100, 1), 1000);
       const service = url.searchParams.get('service') || 'openclaw';
 
-      const allowed = ['openclaw', 'caddy'];
+      const allowed = ['openclaw', 'caddy', 'openclaw-mgmt'];
       if (!allowed.includes(service)) {
         return json(res, 400, { ok: false, error: 'Invalid service. Allowed: ' + allowed.join(', ') });
       }
 
-      const logs = shell(`journalctl -u ${service} --no-pager -n ${lines} --no-hostname 2>&1`, 15000);
+      let logs;
+      try {
+        logs = shell(`journalctl -u ${service} --no-pager -n ${lines} --no-hostname 2>&1`, 15000);
+      } catch (e) {
+        logs = e.stdout ? e.stdout.toString().trim() : (e.message || 'No logs available');
+      }
       return json(res, 200, { ok: true, service, lines, logs });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
