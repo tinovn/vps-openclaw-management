@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '2.0.0';
+const MGMT_VERSION = '2.0.1';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const OPENCLAW_BIN = 'openclaw';
@@ -808,7 +808,14 @@ function openclawExec(cmd, timeout = 30000) {
 
 function getServiceStatus(service = OPENCLAW_SERVICE) {
   try {
-    const active = shell(`systemctl is-active ${service} 2>/dev/null`).trim();
+    let active;
+    try {
+      active = shell(`systemctl is-active ${service} 2>/dev/null`).trim();
+    } catch (e) {
+      // systemctl is-active exits non-zero for inactive/failed states
+      const out = e.stdout ? e.stdout.toString().trim() : '';
+      active = out || 'inactive';
+    }
     let startedAt = null;
     try {
       const ts = shell(`systemctl show ${service} -p ActiveEnterTimestamp --value 2>/dev/null`).trim();
