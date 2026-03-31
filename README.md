@@ -17,7 +17,7 @@ Triển khai và quản lý [OpenClaw](https://github.com/openclaw/openclaw) tr�
 ## Bắt đầu nhanh
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/v2/install.sh | \
+curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main/install.sh | \
   bash -s -- --domain <TEN_MIEN> [--mgmt-key <KEY>]
 ```
 

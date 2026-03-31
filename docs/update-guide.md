@@ -61,7 +61,7 @@ ssh root@<VPS_IP>
 ### Bước 1: Download file mới từ GitHub
 
 ```bash
-REPO_RAW="https://raw.githubusercontent.com/tinovn/vps-openclaw-management/v2"
+REPO_RAW="https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main"
 
 # Management API
 curl -fsSL "$REPO_RAW/management-api/server.js" -o /opt/openclaw-mgmt/server.js

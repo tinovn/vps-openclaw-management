@@ -13,7 +13,7 @@ set -euo pipefail
 # =============================================================================
 
 APP_VERSION="latest"
-REPO_RAW="https://raw.githubusercontent.com/tinovn/vps-openclaw-management/v2"
+REPO_RAW="https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main"
 INSTALL_DIR="/opt/openclaw"
 MGMT_API_DIR="/opt/openclaw-mgmt"
 MGMT_API_PORT=9998

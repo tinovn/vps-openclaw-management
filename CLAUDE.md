@@ -70,7 +70,7 @@ Internet
 ## Cai dat moi
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/v2/install.sh | \
+curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main/install.sh | \
   bash -s -- --domain <DOMAIN> [--mgmt-key <KEY>]
 ```
 
@@ -150,7 +150,7 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/upgr
 curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/self-update
 
 # Thu cong
-curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/v2/management-api/server.js \
+curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main/management-api/server.js \
   -o /opt/openclaw-mgmt/server.js
 systemctl restart openclaw-mgmt
 ```
