@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '2.0.1';
+const MGMT_VERSION = '2.0.2';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const OPENCLAW_BIN = 'openclaw';
@@ -40,7 +40,7 @@ function getLatestVersion() {
   }
   try {
     const raw = execSync(
-      `curl -sf --max-time 5 "https://api.github.com/repos/${GITHUB_REPO}/contents/version.json" -H "Accept: application/vnd.github.v3.raw" 2>/dev/null`,
+      `curl -sf --max-time 5 "https://api.github.com/repos/${GITHUB_REPO}/contents/version.json?ref=v2" -H "Accept: application/vnd.github.v3.raw" 2>/dev/null`,
       { encoding: 'utf8', timeout: 8000 }
     );
     const data = JSON.parse(raw);
@@ -1288,7 +1288,7 @@ const server = http.createServer(async (req, res) => {
 
       // Download latest Caddyfile template from repo
       try {
-        shell(`curl -fsSL 'https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main/Caddyfile?t=${Date.now()}' -o '${CADDYFILE}'`, 15000);
+        shell(`curl -fsSL 'https://raw.githubusercontent.com/tinovn/vps-openclaw-management/v2/Caddyfile?t=${Date.now()}' -o '${CADDYFILE}'`, 15000);
       } catch (dlErr) {
         return json(res, 500, { ok: false, error: 'Failed to download Caddyfile: ' + dlErr.message });
       }
@@ -2422,7 +2422,7 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'POST', '/api/self-update')) {
     try {
-      const REPO_RAW = 'https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main';
+      const REPO_RAW = 'https://raw.githubusercontent.com/tinovn/vps-openclaw-management/v2';
       const MGMT_API_DIR = '/opt/openclaw-mgmt';
 
       // --- Pre-download migration: extract DOMAIN from old Caddyfile before overwriting ---
