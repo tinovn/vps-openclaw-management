@@ -83,16 +83,14 @@ const MAX_AUTH_FAILURES = 10;
 const BLOCK_DURATION = 15 * 60 * 1000;
 const authAttempts = {};
 
-// IP Whitelist — only these IPs can access the Management API
+// IP Whitelist — these IPs/CIDRs bypass auth rate limiting
+// Supports single IPs and CIDR ranges (IPv4 + IPv6)
 const ALLOWED_IPS = [
-  '103.130.216.5',
-  '103.130.216.57',
-  '103.130.216.58',
-  '103.241.42.12',
-  '103.241.42.10',
-  '103.130.217.10',
-  '127.0.0.1',       // localhost
-  '::1',             // localhost IPv6
+  '127.0.0.1',
+  '::1',
+  '103.130.216.0/23',     // tinohost subnet (covers 103.130.216.0 - 103.130.217.255)
+  '103.241.42.0/24',
+  '2405:2840:0:216::/64', // tinohost IPv6 subnet
 ];
 
 // =============================================================================
@@ -100,6 +98,41 @@ const ALLOWED_IPS = [
 // =============================================================================
 function getClientIP(req) {
   return req.socket.remoteAddress.replace('::ffff:', '');
+}
+
+// CIDR matching (IPv4 + IPv6 via BigInt)
+function ipv4ToBigInt(ip) {
+  return ip.split('.').reduce((a, o) => (a << 8n) + BigInt(parseInt(o, 10) || 0), 0n);
+}
+
+function ipv6ToBigInt(ip) {
+  const parts = ip.split('::');
+  const head = parts[0] ? parts[0].split(':') : [];
+  const tail = parts.length > 1 && parts[1] ? parts[1].split(':') : [];
+  const fill = 8 - head.length - tail.length;
+  const groups = [...head, ...Array(Math.max(0, fill)).fill('0'), ...tail];
+  return groups.reduce((a, g) => (a << 16n) + BigInt(parseInt(g || '0', 16) || 0), 0n);
+}
+
+function isWhitelisted(ip) {
+  for (const entry of ALLOWED_IPS) {
+    if (!entry.includes('/')) {
+      if (entry === ip) return true;
+      continue;
+    }
+    const [base, bitsStr] = entry.split('/');
+    const bits = parseInt(bitsStr, 10);
+    const isV6 = base.includes(':');
+    if (isV6 !== ip.includes(':')) continue;
+    try {
+      const totalBits = isV6 ? 128 : 32;
+      const ipInt = isV6 ? ipv6ToBigInt(ip) : ipv4ToBigInt(ip);
+      const baseInt = isV6 ? ipv6ToBigInt(base) : ipv4ToBigInt(base);
+      const mask = ((1n << BigInt(bits)) - 1n) << BigInt(totalBits - bits);
+      if ((ipInt & mask) === (baseInt & mask)) return true;
+    } catch {}
+  }
+  return false;
 }
 
 function isBlocked(ip) {
@@ -920,13 +953,8 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
 
-  // IP Whitelist check
-  // if (!ALLOWED_IPS.includes(ip)) {
-  //   return json(res, 403, { ok: false, error: 'Access denied' });
-  // }
-
-  // Rate limit
-  if (isBlocked(ip)) {
+  // Rate limit (whitelisted IPs bypass)
+  if (!isWhitelisted(ip) && isBlocked(ip)) {
     return json(res, 429, { ok: false, error: 'Too many failed attempts. Blocked for 15 minutes.' });
   }
 
