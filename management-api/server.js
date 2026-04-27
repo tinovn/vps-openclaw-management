@@ -2516,6 +2516,13 @@ const server = http.createServer(async (req, res) => {
             ui2.allowedOrigins = origins;
           }
         }
+        // Ensure plugins.entries.bonjour exists (default disabled)
+        if (!liveConfig.plugins) { liveConfig.plugins = { entries: {} }; migrated = true; }
+        if (!liveConfig.plugins.entries) { liveConfig.plugins.entries = {}; migrated = true; }
+        if (liveConfig.plugins.entries.bonjour === undefined) {
+          liveConfig.plugins.entries.bonjour = { enabled: false };
+          migrated = true;
+        }
         if (migrated) writeConfig(liveConfig);
       } catch {}
 

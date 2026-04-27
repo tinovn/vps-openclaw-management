@@ -453,7 +453,7 @@ jq --arg token "${GATEWAY_TOKEN}" --arg domain "${DOMAIN_ARG}" '
     else ["http://localhost", "http://127.0.0.1"]
     end
   ) |
-  .plugins = { "entries": { "zalo": { "enabled": true } } }
+  .plugins = { "entries": { "zalo": { "enabled": true }, "bonjour": { "enabled": false } } }
 ' ${INSTALL_DIR}/config/openclaw.json > ${INSTALL_DIR}/config/openclaw.json.tmp
 mv ${INSTALL_DIR}/config/openclaw.json.tmp ${INSTALL_DIR}/config/openclaw.json
 
