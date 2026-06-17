@@ -379,9 +379,10 @@ function parseTerminalCmd(cmdStr) {
     return { valid: true, argv: [OPENCLAW_BIN, ...parts.slice(1)] };
   }
 
-  // npm update -g openclaw
-  if (base === 'npm' && parts[1] === 'update' && parts[2] === '-g' && parts[3] === 'openclaw') {
-    return { valid: true, argv: ['npm', 'update', '-g', 'openclaw'] };
+  // npm update|install -g openclaw[@latest]
+  if (base === 'npm' && (parts[1] === 'update' || parts[1] === 'install')
+      && parts[2] === '-g' && /^openclaw(@[\w.-]+)?$/.test(parts[3] || '')) {
+    return { valid: true, argv: ['npm', parts[1], '-g', parts[3]] };
   }
 
   // Safe system commands
@@ -1580,18 +1581,31 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // POST /api/upgrade — Update openclaw + restart
+  // POST /api/upgrade — Update openclaw to latest + migrate auth + restart
+  // Body: { doctor? } — run `openclaw doctor --fix` after upgrade (default: true)
+  // to migrate legacy auth profiles (openai-codex → openai) on schema changes.
+  // Uses `npm install -g` (not `update`) so date-based versions always move to latest.
   // =========================================================================
   if (route(req, 'POST', '/api/upgrade')) {
     try {
-      exec(`npm update -g openclaw@latest`,
+      const body = await parseBody(req).catch(() => ({}));
+      const runDoctor = body.doctor !== false;
+      exec(`npm install -g openclaw@latest`,
         { timeout: 300000 }, (err, stdout, stderr) => {
           console.log('[MGMT] Upgrade completed:', err ? 'FAILED' : 'OK');
           if (stdout) console.log(stdout);
           if (stderr) console.error(stderr);
+          if (runDoctor) {
+            try {
+              const out = openclawExec('doctor --fix', 120000);
+              console.log('[MGMT] doctor --fix:', out.slice(-2000));
+            } catch (e) {
+              console.error('[MGMT] doctor --fix failed:', e.message);
+            }
+          }
           try { execSync(`systemctl restart ${OPENCLAW_SERVICE}`, { timeout: 30000 }); } catch {}
         });
-      return json(res, 202, { ok: true, message: 'Upgrade started. Check /api/status for progress.' });
+      return json(res, 202, { ok: true, message: 'Upgrade started (npm install + doctor --fix). Check /api/status for progress.' });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 

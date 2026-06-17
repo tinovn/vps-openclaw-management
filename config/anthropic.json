@@ -2,7 +2,7 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "anthropic/claude-opus-4-5"
+        "primary": "anthropic/claude-opus-4-6"
       },
       "maxConcurrent": 4,
       "subagents": {

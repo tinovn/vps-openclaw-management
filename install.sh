@@ -331,7 +331,7 @@ cat > /etc/openclaw/config/anthropic.json << 'CONFIGEOF'
   "agents": {
     "defaults": {
       "model": {
-        "primary": "anthropic/claude-opus-4-5"
+        "primary": "anthropic/claude-opus-4-6"
       },
       "maxConcurrent": 4,
       "subagents": {
@@ -367,7 +367,7 @@ cat > /etc/openclaw/config/openai.json << 'CONFIGEOF'
   "agents": {
     "defaults": {
       "model": {
-        "primary": "openai/gpt-5.2"
+        "primary": "openai/gpt-5.5"
       },
       "maxConcurrent": 4,
       "subagents": {
@@ -434,7 +434,7 @@ cat > /etc/openclaw/config/google.json << 'CONFIGEOF'
 CONFIGEOF
 
 # --- Download config templates cho cac provider khac tu GitHub ---
-for provider in deepseek groq together mistral xai cerebras sambanova fireworks cohere yi baichuan stepfun siliconflow novita openrouter minimax moonshot zhipu; do
+for provider in openai-codex deepseek groq together mistral xai cerebras sambanova fireworks cohere yi baichuan stepfun siliconflow novita openrouter minimax moonshot zhipu; do
     curl -fsSL "${REPO_RAW}/config/${provider}.json" -o /etc/openclaw/config/${provider}.json 2>/dev/null || \
         log "Canh bao: Khong tai duoc config template ${provider}.json"
 done

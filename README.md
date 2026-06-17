@@ -107,9 +107,9 @@ systemctl start openclaw         # Hoặc: curl -X POST ... /api/start
 ### Cập nhật OpenClaw
 
 ```bash
-npm update -g openclaw@latest && systemctl restart openclaw
+npm install -g openclaw@latest && openclaw doctor --fix && systemctl restart openclaw
 
-# Hoặc qua API
+# Hoặc qua API (tự chạy npm install + doctor --fix + restart)
 curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/upgrade
 ```
 
@@ -161,7 +161,7 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/
 | `POST` | `/api/stop` | Stop OpenClaw |
 | `POST` | `/api/start` | Start OpenClaw |
 | `POST` | `/api/rebuild` | Restart OpenClaw + Caddy |
-| `POST` | `/api/upgrade` | `npm update -g openclaw` + restart |
+| `POST` | `/api/upgrade` | `npm install -g openclaw@latest` + `doctor --fix` + restart (`{doctor?}`) |
 | `POST` | `/api/reset` | Khôi phục cài đặt gốc (`{"confirm":"RESET"}`) |
 | `POST` | `/api/self-update` | Cập nhật Management API từ GitHub |
 | `PUT` | `/api/domain` | Đổi domain (Caddy tự xin SSL) |

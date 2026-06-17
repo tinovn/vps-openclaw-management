@@ -137,9 +137,9 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/star
 ### Cap nhat OpenClaw
 
 ```bash
-npm update -g openclaw@latest && systemctl restart openclaw
+npm install -g openclaw@latest && openclaw doctor --fix && systemctl restart openclaw
 
-# Hoac qua API
+# Hoac qua API (npm install + doctor --fix + restart)
 curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/upgrade
 ```
 
@@ -297,7 +297,7 @@ curl -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/system
 | `POST` | `/api/start` | Start OpenClaw |
 | `POST` | `/api/rebuild` | Restart openclaw + caddy |
 | `POST` | `/api/reset` | Xoa data, tao lai (can `{"confirm":"RESET"}`) |
-| `POST` | `/api/upgrade` | `npm update -g openclaw` + restart |
+| `POST` | `/api/upgrade` | `npm install -g openclaw@latest` + `doctor --fix` + restart (`{restart?}`) |
 | `POST` | `/api/self-update` | Cap nhat Management API tu GitHub |
 | `PUT` | `/api/domain` | Doi domain (Caddy tu xin SSL) |
 
