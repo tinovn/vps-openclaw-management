@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '2.1.1';
+const MGMT_VERSION = '2.1.2';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const OPENCLAW_BIN = 'openclaw';
@@ -272,6 +272,43 @@ function getAgentAuthDir(agentId) {
   return `${CONFIG_DIR}/agents/${agentId}/agent`;
 }
 
+function getAgentSqlitePath(agentId) {
+  return `${getAgentAuthDir(agentId)}/openclaw-agent.sqlite`;
+}
+
+// Remove all profiles for a provider directly from the SQLite auth store.
+// `openclaw doctor` MERGES auth-profiles.json into SQLite (never prunes), so
+// deleting a key from JSON alone leaves it live in SQLite. This closes that gap.
+// Returns number of profiles removed, or -1 if SQLite/the table is unavailable.
+function removeProviderFromSqlite(agentId, providerName) {
+  const dbPath = getAgentSqlitePath(agentId);
+  if (!fs.existsSync(dbPath)) return 0;
+  let DatabaseSync;
+  try { ({ DatabaseSync } = require('node:sqlite')); }
+  catch { return -1; } // Node < 22.5 — caller falls back to doctor-only
+  const db = new DatabaseSync(dbPath);
+  try {
+    const rows = db.prepare('SELECT store_key, store_json FROM auth_profile_stores').all();
+    let removed = 0;
+    for (const row of rows) {
+      let store;
+      try { store = JSON.parse(row.store_json); } catch { continue; }
+      if (!store || !store.profiles) continue;
+      let changed = false;
+      for (const [id, p] of Object.entries(store.profiles)) {
+        if (p && p.provider === providerName) { delete store.profiles[id]; removed++; changed = true; }
+      }
+      if (changed) {
+        db.prepare('UPDATE auth_profile_stores SET store_json = ?, updated_at = ? WHERE store_key = ?')
+          .run(JSON.stringify(store), Date.now(), row.store_key);
+      }
+    }
+    return removed;
+  } finally {
+    try { db.close(); } catch {}
+  }
+}
+
 function getAgentAuthFile(agentId) {
   return `${getAgentAuthDir(agentId)}/auth-profiles.json`;
 }
@@ -318,13 +355,19 @@ function getAgentApiKey(agentId, providerName) {
 }
 
 function removeAgentApiKey(agentId, providerName) {
+  // 1. Remove from JSON (all profiles for this provider, not just ":manual").
   const data = readAgentAuth(agentId);
-  if (!data.profiles) return;
-  const profileId = `${providerName}:manual`;
-  if (data.profiles[profileId]) {
-    delete data.profiles[profileId];
-    writeAgentAuth(agentId, data);
+  if (data.profiles) {
+    let changed = false;
+    for (const [id, p] of Object.entries(data.profiles)) {
+      if (id === `${providerName}:manual` || (p && p.provider === providerName)) {
+        delete data.profiles[id]; changed = true;
+      }
+    }
+    if (changed) writeAgentAuth(agentId, data);
   }
+  // 2. Remove from SQLite (doctor merges, never prunes — must delete here).
+  try { removeProviderFromSqlite(agentId, providerName); } catch {}
 }
 
 // Backward-compatible wrappers (default to 'main' agent)
