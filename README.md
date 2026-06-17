@@ -236,11 +236,12 @@ curl -H "Authorization: Bearer $MGMT_KEY" \
 | `POST` | `/api/config/chatgpt-oauth/start` | Khởi tạo — trả `oauthUrl` |
 | `POST` | `/api/config/chatgpt-oauth/complete` | Hoàn thành bằng `{sessionId, redirectUrl, model?}` |
 | `POST` | `/api/config/chatgpt-oauth/refresh` | Refresh token thủ công |
-| `GET` | `/api/config/chatgpt-oauth/status` | Trạng thái token (expires, accountId) |
+| `GET` | `/api/config/chatgpt-oauth/status` | Trạng thái token (expires, accountId) + danh sách `accounts[]` (đa tài khoản) |
+| `POST` | `/api/config/chatgpt-oauth/disconnect` | Ngắt kết nối. `{profileKey?}` xóa 1 tài khoản; bỏ trống = xóa tất cả. Xóa khỏi cả JSON lẫn SQLite rồi restart |
 
 Token tự động refresh mỗi 5 phút khi còn dưới 10 phút. Hỗ trợ đọc profile cũ `openai-codex:*` để tương thích ngược.
 
-> **Lưu ý kỹ thuật:** OpenClaw 2026.6.x lưu credential trong SQLite (`openclaw-agent.sqlite`), không đọc `auth-profiles.json` lúc chạy. Management API ghi token vào `auth-profiles.json` rồi tự chạy `openclaw doctor --fix` để nạp vào SQLite trước khi restart (áp dụng cho cả OAuth lẫn API key).
+> **Lưu ý kỹ thuật:** OpenClaw 2026.6.x lưu credential trong SQLite (`openclaw-agent.sqlite`), không đọc `auth-profiles.json` lúc chạy. Management API ghi token vào `auth-profiles.json` rồi tự chạy `openclaw doctor --fix` để nạp vào SQLite trước khi restart (áp dụng cho cả OAuth lẫn API key). `/status` đọc **gộp JSON + SQLite** nên phản ánh đúng trạng thái sau khi doctor đã consume JSON (báo "đã kết nối" + danh sách account); `disconnect` xóa ở cả hai nơi.
 
 ### Chẩn đoán (Diagnostics)
 

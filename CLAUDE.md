@@ -326,11 +326,12 @@ Tren VPS khong co browser → dung **device-code flow** (khong can copy-paste).
 | `POST` | `/api/config/chatgpt-oauth/start` | (Fallback) PKCE browser flow — tra `oauthUrl`, can copy-paste redirect URL |
 | `POST` | `/api/config/chatgpt-oauth/complete` | Hoan thanh PKCE: `{sessionId, redirectUrl, model?}` |
 | `POST` | `/api/config/chatgpt-oauth/refresh` | Refresh token thu cong (`{agentId?}`) |
-| `GET` | `/api/config/chatgpt-oauth/status` | Trang thai token hien tai (expires, accountId) |
+| `GET` | `/api/config/chatgpt-oauth/status` | Trang thai token hien tai (expires, accountId) + `accounts[]` (da tai khoan). Doc gop JSON + SQLite |
+| `POST` | `/api/config/chatgpt-oauth/disconnect` | Ngat ket noi. Body `{agentId?, profileKey?}` — profileKey xoa 1 tai khoan, bo trong = xoa tat ca. Xoa khoi JSON + SQLite roi restart |
 
 Device-code flow (verified OpenClaw 2026.6.8): `POST auth.openai.com/api/accounts/deviceauth/usercode` → hien `auth.openai.com/codex/device` + user_code → server poll `/api/accounts/deviceauth/token` → exchange `/oauth/token`. Header bat buoc: `originator: openclaw`.
 
-**Quan trong — Auth store la SQLite:** OpenClaw 2026.6.x doc credential tu `agents/main/agent/openclaw-agent.sqlite`, KHONG doc `auth-profiles.json` luc runtime. Management API ghi token vao `auth-profiles.json` (key `openai:<email>`, format `{version:1,profiles}`) ROI chay `openclaw doctor --fix --yes --non-interactive` de nap vao SQLite, sau do restart. Tat ca endpoint set credential (OAuth + API key) deu tu dong lam buoc nay (`finalizeAuth`).
+**Quan trong — Auth store la SQLite:** OpenClaw 2026.6.x doc credential tu `agents/main/agent/openclaw-agent.sqlite`, KHONG doc `auth-profiles.json` luc runtime. Management API ghi token vao `auth-profiles.json` (key `openai:<email>`, format `{version:1,profiles}`) ROI chay `openclaw doctor --fix --yes --non-interactive` de nap vao SQLite, sau do restart. Tat ca endpoint set credential (OAuth + API key) deu tu dong lam buoc nay (`finalizeAuth`). Sau khi doctor consume `auth-profiles.json` (file thanh rong), trang thai that nam o SQLite — vi vay `getOAuthProfile`/`/status` doc GOP JSON + SQLite (`readSqliteProfiles`/`readAllProfiles`), neu khong badge se bao "chua ket noi" du token van usable.
 
 **Diagnostics**
 

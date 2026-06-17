@@ -309,6 +309,65 @@ function removeProviderFromSqlite(agentId, providerName) {
   }
 }
 
+// Read merged auth profiles from the SQLite store (openclaw-agent.sqlite).
+// `openclaw doctor` imports auth-profiles.json INTO SQLite and then empties the
+// JSON, so the JSON file alone is not a reliable source of "what is connected".
+// Returns a flat { profileKey: profile } map, or null if SQLite is unavailable.
+function readSqliteProfiles(agentId) {
+  const dbPath = getAgentSqlitePath(agentId);
+  if (!fs.existsSync(dbPath)) return null;
+  let DatabaseSync;
+  try { ({ DatabaseSync } = require('node:sqlite')); }
+  catch { return null; } // Node < 22.5
+  const db = new DatabaseSync(dbPath);
+  try {
+    const rows = db.prepare('SELECT store_key, store_json FROM auth_profile_store').all();
+    const merged = {};
+    for (const row of rows) {
+      let store;
+      try { store = JSON.parse(row.store_json); } catch { continue; }
+      if (store && store.profiles) Object.assign(merged, store.profiles);
+    }
+    return merged;
+  } catch {
+    return null;
+  } finally {
+    try { db.close(); } catch {}
+  }
+}
+
+// Remove specific profile key(s) from the SQLite auth store. Pass a Set/array of
+// store keys, or null to match by predicate. Returns number removed, -1 if N/A.
+function removeProfileKeysFromSqlite(agentId, keys) {
+  const dbPath = getAgentSqlitePath(agentId);
+  if (!fs.existsSync(dbPath)) return 0;
+  let DatabaseSync;
+  try { ({ DatabaseSync } = require('node:sqlite')); }
+  catch { return -1; }
+  const keySet = new Set(keys || []);
+  const db = new DatabaseSync(dbPath);
+  try {
+    const rows = db.prepare('SELECT store_key, store_json FROM auth_profile_store').all();
+    let removed = 0;
+    for (const row of rows) {
+      let store;
+      try { store = JSON.parse(row.store_json); } catch { continue; }
+      if (!store || !store.profiles) continue;
+      let changed = false;
+      for (const id of Object.keys(store.profiles)) {
+        if (keySet.has(id)) { delete store.profiles[id]; removed++; changed = true; }
+      }
+      if (changed) {
+        db.prepare('UPDATE auth_profile_store SET store_json = ?, updated_at = ? WHERE store_key = ?')
+          .run(JSON.stringify(store), Date.now(), row.store_key);
+      }
+    }
+    return removed;
+  } finally {
+    try { db.close(); } catch {}
+  }
+}
+
 function getAgentAuthFile(agentId) {
   return `${getAgentAuthDir(agentId)}/auth-profiles.json`;
 }
@@ -973,15 +1032,29 @@ function exchangeDeviceCode(authorizationCode, codeVerifier) {
 // Get stored OAuth profile for an agent.
 // Reads the unified "openai:*" key (2026.6.8) and legacy "openai-codex:*"/"openai:oauth"
 // keys for backward compatibility. Only returns profiles with type "oauth".
-function getOAuthProfile(agentId = 'main') {
-  const data = readAgentAuth(agentId);
-  const profiles = data.profiles || {};
+// Merge JSON + SQLite profiles. SQLite wins (doctor imports JSON→SQLite then
+// empties the JSON), but JSON is still read so freshly-stored tokens show up
+// before the next doctor run.
+function readAllProfiles(agentId = 'main') {
+  const fromJson = (readAgentAuth(agentId).profiles) || {};
+  const fromSqlite = readSqliteProfiles(agentId);
+  return fromSqlite ? { ...fromJson, ...fromSqlite } : fromJson;
+}
+
+// List ALL OpenAI OAuth profiles (one per connected ChatGPT account).
+function listOAuthProfiles(agentId = 'main') {
+  const profiles = readAllProfiles(agentId);
   const prefixes = [OPENAI_OAUTH_PROFILE, ...OPENAI_OAUTH_LEGACY_KEYS];
+  const out = [];
   for (const [k, v] of Object.entries(profiles)) {
     if (!v || !v.access || v.type !== 'oauth') continue;
-    if (prefixes.some(p => k === p || k.startsWith(`${p}:`))) return { key: k, ...v };
+    if (prefixes.some(p => k === p || k.startsWith(`${p}:`))) out.push({ key: k, ...v });
   }
-  return null;
+  return out;
+}
+
+function getOAuthProfile(agentId = 'main') {
+  return listOAuthProfiles(agentId)[0] || null;
 }
 
 // Attempt to refresh tokens for a single agent. Returns 'refreshed' | 'skipped' | 'error'
@@ -3510,10 +3583,20 @@ const server = http.createServer(async (req, res) => {
     try {
       const { query } = route(req, 'GET', '/api/config/chatgpt-oauth/status');
       const agentId = (query && query.agentId && isValidAgentId(query.agentId)) ? query.agentId : 'main';
-      const profile = getOAuthProfile(agentId);
+      const all = listOAuthProfiles(agentId);
+      const profile = all[0] || null;
       pruneOAuthSessions();
       const now = Date.now();
       const expires = profile ? profile.expires : null;
+      // One row per connected ChatGPT account (multi-account support).
+      const accounts = all.map(p => ({
+        profileKey: p.key,
+        accountId: p.accountId || null,
+        hasRefreshToken: !!p.refresh,
+        expiresAt: p.expires || null,
+        expiresIn: p.expires ? Math.max(0, Math.round((p.expires - now) / 1000)) : null,
+        expired: p.expires ? p.expires < now : null
+      }));
       return json(res, 200, {
         ok: true,
         agentId,
@@ -3524,7 +3607,59 @@ const server = http.createServer(async (req, res) => {
         expiresAt: expires,
         expiresIn: expires ? Math.max(0, Math.round((expires - now) / 1000)) : null,
         expired: expires ? expires < now : null,
+        accounts,
+        accountCount: accounts.length,
         activeSessions: Object.keys(_oauthSessions).length
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/config/chatgpt-oauth/disconnect — Ngat ket noi tai khoan ChatGPT
+  // Body: { agentId?, profileKey? } — profileKey xoa 1 account; bo trong = xoa
+  // tat ca OAuth cua openai. Xoa khoi ca auth-profiles.json va SQLite, restart.
+  // =========================================================================
+  if (route(req, 'POST', '/api/config/chatgpt-oauth/disconnect')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const agentId = (body.agentId && isValidAgentId(body.agentId)) ? body.agentId : 'main';
+
+      const all = listOAuthProfiles(agentId);
+      if (!all.length) {
+        return json(res, 404, { ok: false, error: 'Không có tài khoản ChatGPT nào đang kết nối' });
+      }
+
+      // Determine which profile keys to remove.
+      let targetKeys;
+      if (body.profileKey) {
+        if (!all.some(p => p.key === body.profileKey)) {
+          return json(res, 404, { ok: false, error: 'Không tìm thấy profile: ' + body.profileKey });
+        }
+        targetKeys = [body.profileKey];
+      } else {
+        targetKeys = all.map(p => p.key);
+      }
+
+      // 1. Remove from auth-profiles.json (pre-doctor state).
+      const data = readAgentAuth(agentId);
+      data.profiles = data.profiles || {};
+      for (const k of targetKeys) delete data.profiles[k];
+      writeAgentAuth(agentId, data);
+
+      // 2. Remove from SQLite (live runtime store).
+      let removedFromSqlite = 0;
+      try { removedFromSqlite = removeProfileKeysFromSqlite(agentId, targetKeys); } catch {}
+
+      // 3. Restart so OpenClaw reloads without the revoked tokens.
+      try { restartService(OPENCLAW_SERVICE); } catch {}
+
+      const remaining = listOAuthProfiles(agentId);
+      return json(res, 200, {
+        ok: true,
+        agentId,
+        disconnected: targetKeys,
+        removedFromSqlite,
+        remainingAccounts: remaining.length
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
