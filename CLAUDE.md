@@ -315,6 +315,28 @@ curl -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/system
 | `PUT` | `/api/config/custom-provider/:p` | Update custom provider |
 | `DELETE` | `/api/config/custom-provider/:p` | Xoa custom provider |
 
+**ChatGPT OAuth (Codex) — provider `openai`, default model `openai/gpt-5.5`**
+
+Tren VPS khong co browser → dung **device-code flow** (khong can copy-paste).
+
+| Method | Path | Mo ta |
+|--------|------|-------|
+| `POST` | `/api/config/chatgpt-oauth/device/start` | **(Khuyen nghi VPS)** Bat dau device-code. Tra ve `{sessionId, verificationUrl, userCode}` — user mo URL, nhap code tren dien thoai. Server tu poll nen. Body: `{agentId?, model?, switchProvider?}` |
+| `GET` | `/api/config/chatgpt-oauth/device/status?sessionId=...` | Poll ket qua: `status` = `pending`/`ready`/`error`/`expired` |
+| `POST` | `/api/config/chatgpt-oauth/start` | (Fallback) PKCE browser flow — tra `oauthUrl`, can copy-paste redirect URL |
+| `POST` | `/api/config/chatgpt-oauth/complete` | Hoan thanh PKCE: `{sessionId, redirectUrl, model?}` |
+| `POST` | `/api/config/chatgpt-oauth/refresh` | Refresh token thu cong (`{agentId?}`) |
+| `GET` | `/api/config/chatgpt-oauth/status` | Trang thai token hien tai (expires, accountId) |
+
+Device-code flow (verified OpenClaw 2026.6.8): `POST auth.openai.com/api/accounts/deviceauth/usercode` → hien `auth.openai.com/codex/device` + user_code → server poll `/api/accounts/deviceauth/token` → exchange `/oauth/token`. Header bat buoc: `originator: openclaw`. Token luu `auth-profiles.json` key `openai:<email>`.
+
+**Diagnostics**
+
+| Method | Path | Mo ta |
+|--------|------|-------|
+| `POST` | `/api/doctor` | Chay `openclaw doctor --fix` (migrate auth profile cu `openai-codex`→`openai`, sua config). Body: `{restart?}` |
+| `GET` | `/api/models/status` | `openclaw models status` (them `?probe=1` de probe credential) |
+
 **Multi-Agent**
 
 | Method | Path | Mo ta |

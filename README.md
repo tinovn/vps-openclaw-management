@@ -205,16 +205,49 @@ curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json"
   http://localhost:9998/api/config/custom-provider
 ```
 
-### ChatGPT OAuth (OpenAI Codex)
+### ChatGPT OAuth (Codex)
+
+Provider: `openai` — model mặc định `openai/gpt-5.5` (OpenClaw 2026.6.x đã hợp nhất `openai-codex` → `openai`).
+
+**Device-code flow (khuyến nghị cho VPS — không cần browser):**
 
 | Phương thức | Endpoint | Mô tả |
 |-------------|----------|-------|
-| `POST` | `/api/config/chatgpt-oauth/start` | Khởi tạo flow — trả OAuth URL |
-| `POST` | `/api/config/chatgpt-oauth/complete` | Hoàn thành bằng redirect URL |
-| `POST` | `/api/config/chatgpt-oauth/refresh` | Refresh token thủ công |
-| `GET` | `/api/config/chatgpt-oauth/status` | Trạng thái token |
+| `POST` | `/api/config/chatgpt-oauth/device/start` | Bắt đầu — trả `{sessionId, verificationUrl, userCode}` |
+| `GET` | `/api/config/chatgpt-oauth/device/status?sessionId=...` | Poll kết quả: `pending`/`ready`/`error`/`expired` |
 
-Token tự động refresh mỗi 5 phút khi còn dưới 10 phút.
+```bash
+# 1. Bắt đầu — nhận URL + mã
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" \
+  http://localhost:9998/api/config/chatgpt-oauth/device/start
+# → { "verificationUrl": "https://auth.openai.com/codex/device", "userCode": "ABCD-1234", "sessionId": "..." }
+
+# 2. Mở verificationUrl trên điện thoại/máy bất kỳ, nhập userCode, approve.
+
+# 3. Poll tới khi status = ready (server tự đổi model + restart OpenClaw)
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://localhost:9998/api/config/chatgpt-oauth/device/status?sessionId=<sessionId>"
+```
+
+**PKCE browser flow (dự phòng — cần browser + copy-paste):**
+
+| Phương thức | Endpoint | Mô tả |
+|-------------|----------|-------|
+| `POST` | `/api/config/chatgpt-oauth/start` | Khởi tạo — trả `oauthUrl` |
+| `POST` | `/api/config/chatgpt-oauth/complete` | Hoàn thành bằng `{sessionId, redirectUrl, model?}` |
+| `POST` | `/api/config/chatgpt-oauth/refresh` | Refresh token thủ công |
+| `GET` | `/api/config/chatgpt-oauth/status` | Trạng thái token (expires, accountId) |
+
+Token tự động refresh mỗi 5 phút khi còn dưới 10 phút. Hỗ trợ đọc profile cũ `openai-codex:*` để tương thích ngược.
+
+### Chẩn đoán (Diagnostics)
+
+| Phương thức | Endpoint | Mô tả |
+|-------------|----------|-------|
+| `POST` | `/api/doctor` | Chạy `openclaw doctor --fix` — migrate auth profile cũ `openai-codex`→`openai`, sửa config. Body: `{restart?}` |
+| `GET` | `/api/models/status` | `openclaw models status` (thêm `?probe=1` để probe credential) |
+
+> **Nâng cấp từ bản cũ:** sau `npm update -g openclaw@latest`, gọi `POST /api/doctor` một lần để migrate profile OAuth, rồi dùng device-code flow để đăng nhập lại nếu cần.
 
 ### Đa Agent
 

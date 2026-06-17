@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '2.0.3';
+const MGMT_VERSION = '2.1.0';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const OPENCLAW_BIN = 'openclaw';
@@ -29,9 +29,14 @@ let _latestVersionCache = { version: null, checkedAt: 0 };
 const VERSION_CHECK_INTERVAL = 60 * 1000; // 1 minute
 
 // --- ChatGPT OAuth (OpenAI Codex) PKCE sessions ---
-const _oauthSessions = {}; // sessionId → { codeVerifier, clientId, agentId, createdAt }
+const _oauthSessions = {}; // sessionId → { codeVerifier, state, agentId, createdAt }
 const OAUTH_SESSION_TTL = 10 * 60 * 1000; // 10 minutes
 let _oauthClientCache = null;
+
+// --- ChatGPT OAuth device-code sessions (background polling) ---
+// sessionId → { deviceAuthId, userCode, verificationUrl, intervalMs, agentId, model,
+//               switchProvider, createdAt, deadline, status, result?, error?, timer? }
+const _deviceSessions = {};
 
 function getLatestVersion() {
   const now = Date.now();
@@ -477,15 +482,14 @@ const PROVIDERS = {
     authProfileProvider: 'openai',
     configTemplate: `${TEMPLATES_DIR}/openai.json`,
     knownModels: [
+      { id: 'gpt-5.5', name: 'GPT-5.5' },
+      { id: 'gpt-5.5-pro', name: 'GPT-5.5 Pro' },
       { id: 'gpt-5.4', name: 'GPT-5.4' },
-      { id: 'gpt-5.4-pro-2026-03-05', name: 'GPT-5.4 Pro' },
-      { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
+      { id: 'gpt-5.4-pro', name: 'GPT-5.4 Pro' },
+      { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini' },
+      { id: 'gpt-5.4-nano', name: 'GPT-5.4 Nano' },
       { id: 'gpt-4.1', name: 'GPT-4.1' },
       { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
-      { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano' },
-      { id: 'o3', name: 'o3' },
-      { id: 'o3-pro', name: 'o3 Pro' },
-      { id: 'o3-mini', name: 'o3 Mini' },
       { id: 'o4-mini', name: 'o4-mini' }
     ],
     testFn: (apiKey) => testBearerModels('https://api.openai.com/v1/models', apiKey)
@@ -493,19 +497,20 @@ const PROVIDERS = {
   'openai-codex': {
     name: 'ChatGPT OAuth (Codex)',
     envKey: null,              // No API key — uses OAuth token from auth-profiles.json
-    authProfileProvider: 'openai-codex',
+    authProfileProvider: 'openai', // 2026.6.8 unified ChatGPT OAuth under "openai"
     configTemplate: `${TEMPLATES_DIR}/openai-codex.json`,
     oauthOnly: true,           // Requires ChatGPT OAuth, no API key support
+    // Model IDs use the "openai/" prefix (unified provider). Verified default: openai/gpt-5.5
     knownModels: [
-      { id: 'openai-codex/gpt-5.4',            name: 'GPT-5.4',          default: true },
-      { id: 'openai-codex/gpt-5.4-mini',        name: 'GPT-5.4-Mini' },
-      { id: 'openai-codex/gpt-5.3-codex',       name: 'GPT-5.3-Codex' },
-      { id: 'openai-codex/gpt-5.3-codex-spark', name: 'GPT-5.3-Codex-Spark' },
-      { id: 'openai-codex/gpt-5.2-codex',       name: 'GPT-5.2-Codex' },
-      { id: 'openai-codex/gpt-5.2',             name: 'GPT-5.2' },
-      { id: 'openai-codex/gpt-5.1-codex-max',   name: 'GPT-5.1-Codex-Max' },
-      { id: 'openai-codex/gpt-5.1-codex-mini',  name: 'GPT-5.1-Codex-Mini' },
-      { id: 'openai-codex/gpt-5.1',             name: 'GPT-5.1' }
+      { id: 'openai/gpt-5.5',              name: 'GPT-5.5',            default: true },
+      { id: 'openai/gpt-5.5-pro',          name: 'GPT-5.5 Pro' },
+      { id: 'openai/gpt-5.4',              name: 'GPT-5.4' },
+      { id: 'openai/gpt-5.4-codex',        name: 'GPT-5.4-Codex' },
+      { id: 'openai/gpt-5.4-mini',         name: 'GPT-5.4-Mini' },
+      { id: 'openai/gpt-5.3-codex',        name: 'GPT-5.3-Codex' },
+      { id: 'openai/gpt-5.3-codex-spark',  name: 'GPT-5.3-Codex-Spark' },
+      { id: 'openai/gpt-5.2-codex',        name: 'GPT-5.2-Codex' },
+      { id: 'openai/gpt-5.1-codex-max',    name: 'GPT-5.1-Codex-Max' }
     ],
     testFn: () => false  // OAuth token — cannot test with static key
   },
@@ -674,15 +679,38 @@ const CHANNEL_MAP = {
 };
 
 // =============================================================================
-// ChatGPT OAuth (OpenAI Codex) — PKCE OAuth 2.0 Helpers
-// Constants extracted from @mariozechner/pi-ai/dist/utils/oauth/openai-codex.js
+// ChatGPT OAuth (OpenAI Codex) — OAuth 2.0 Helpers
+// Constants verified against OpenClaw 2026.6.8 dist (openai-chatgpt-device-code.ts)
 // =============================================================================
-const OPENAI_OAUTH_CLIENT_ID  = 'app_EMoamEEZ73f0CkXaXp7hrann';
-const OPENAI_OAUTH_TOKEN_URL  = 'https://auth.openai.com/oauth/token';
-const OPENAI_OAUTH_AUTH_URL   = 'https://auth.openai.com/oauth/authorize';
-const OPENAI_OAUTH_REDIRECT   = 'http://localhost:1455/auth/callback';
-const OPENAI_OAUTH_SCOPE      = 'openid profile email offline_access';
-const OPENAI_OAUTH_PROFILE    = 'openai-codex'; // provider key used by openclaw
+const OPENAI_OAUTH_CLIENT_ID   = 'app_EMoamEEZ73f0CkXaXp7hrann';
+const OPENAI_OAUTH_BASE_URL    = 'https://auth.openai.com';
+const OPENAI_OAUTH_TOKEN_URL   = `${OPENAI_OAUTH_BASE_URL}/oauth/token`;
+const OPENAI_OAUTH_AUTH_URL    = `${OPENAI_OAUTH_BASE_URL}/oauth/authorize`;
+const OPENAI_OAUTH_REDIRECT    = 'http://localhost:1455/auth/callback'; // PKCE redirect (browser flow)
+const OPENAI_OAUTH_SCOPE       = 'openid profile email offline_access';
+
+// Device-code flow (no browser on server — verified OpenClaw 2026.6.8)
+const OPENAI_DEVICE_USERCODE_URL = `${OPENAI_OAUTH_BASE_URL}/api/accounts/deviceauth/usercode`;
+const OPENAI_DEVICE_TOKEN_URL    = `${OPENAI_OAUTH_BASE_URL}/api/accounts/deviceauth/token`;
+const OPENAI_DEVICE_VERIFY_URL   = `${OPENAI_OAUTH_BASE_URL}/codex/device`;
+const OPENAI_DEVICE_CALLBACK_URL = `${OPENAI_OAUTH_BASE_URL}/deviceauth/callback`;
+const OPENAI_DEVICE_TIMEOUT_MS   = 15 * 60 * 1000;
+const OPENAI_DEVICE_DEFAULT_INTERVAL_MS = 5000;
+const OPENAI_DEVICE_MIN_INTERVAL_MS     = 1000;
+
+// Provider key used by OpenClaw. 2026.6.8 unified ChatGPT OAuth under "openai"
+// (legacy "openai-codex" is migrated by `openclaw doctor --fix`).
+const OPENAI_OAUTH_PROFILE      = 'openai';
+const OPENAI_OAUTH_LEGACY_KEYS  = ['openai-codex', 'openai:oauth']; // old profile prefixes to clean up
+const OPENAI_CODEX_DEFAULT_MODEL = 'openai/gpt-5.5';
+
+// Curl header args OpenClaw sends to the auth endpoints (originator identifies the client).
+// Returns a shell-ready string, e.g. -H 'originator: openclaw' -H 'User-Agent: openclaw'
+function openaiOAuthHeaderArgs() {
+  const version = (process.env.OPENCLAW_VERSION || '').trim();
+  const ua = version ? `openclaw/${version}` : 'openclaw';
+  return `-H 'originator: openclaw' -H 'User-Agent: ${ua}'`;
+}
 
 function pkceVerifier() {
   return crypto.randomBytes(32).toString('base64url');
@@ -727,32 +755,36 @@ function exchangeOAuthCode(code, codeVerifier) {
 
 // Store OAuth tokens in auth-profiles.json using openclaw's exact credential format
 // Fields: { type, provider, access, refresh, expires (ms), accountId }
-// Profile key: "openai-codex:<email|default>"
+// Profile key: "openai:<email|default>" (2026.6.8 unified naming)
 function storeOAuthTokens(tokens, agentId = 'main') {
   const data = readAgentAuth(agentId);
   data.profiles = data.profiles || {};
 
-  // Extract accountId and email from JWT
-  const JWT_CLAIM = 'https://api.openai.com/auth';
+  // Extract accountId and email from JWT (verified claim paths, OpenClaw 2026.6.8)
   const payload = decodeJwtPayload(tokens.access);
-  const accountId = payload?.[JWT_CLAIM]?.chatgpt_account_id || null;
-  const email = (typeof payload?.email === 'string' && payload.email.trim()) ? payload.email.trim() : null;
+  const auth = payload?.['https://api.openai.com/auth'];
+  const accountId = auth?.chatgpt_account_id || null;
+  const rawEmail = payload?.['https://api.openai.com/profile']?.email;
+  const email = (typeof rawEmail === 'string' && rawEmail.trim()) ? rawEmail.trim() : null;
 
   const profileKey = `${OPENAI_OAUTH_PROFILE}:${email || 'default'}`;
 
-  // Remove any old profile keys for this provider
+  // Remove any old OAuth profile keys for this provider (current + legacy prefixes).
+  // Keep api_key profiles (e.g. "openai:manual") so OAuth doesn't clobber a stored key.
   for (const k of Object.keys(data.profiles)) {
-    if (k.startsWith(`${OPENAI_OAUTH_PROFILE}:`)) delete data.profiles[k];
+    const v = data.profiles[k];
+    const isOAuthForOpenai =
+      k.startsWith(`${OPENAI_OAUTH_PROFILE}:`) && v && v.type === 'oauth';
+    const isLegacy = OPENAI_OAUTH_LEGACY_KEYS.some(p => k === p || k.startsWith(`${p}:`));
+    if (isOAuthForOpenai || isLegacy) delete data.profiles[k];
   }
-  // Also remove old incorrect key from previous management API versions
-  delete data.profiles['openai:oauth'];
 
   data.profiles[profileKey] = {
     type: 'oauth',
     provider: OPENAI_OAUTH_PROFILE,
     access: tokens.access,
     refresh: tokens.refresh,
-    expires: tokens.expires,  // milliseconds (Date.now() + expires_in*1000)
+    expires: tokens.expires,  // milliseconds epoch (Date.now() + expires_in*1000)
     accountId
   };
   writeAgentAuth(agentId, data);
@@ -788,12 +820,116 @@ function refreshOAuthToken(refreshToken) {
   }
 }
 
-// Get stored OAuth profile for an agent (searches for openai-codex:* key)
+// =============================================================================
+// Device-code OAuth flow (RFC 8628 style) — verified against OpenClaw 2026.6.8
+// Ideal for headless VPS: user enters a short code on any device, no copy-paste.
+// =============================================================================
+
+// POST /api/accounts/deviceauth/usercode → { device_auth_id, user_code, interval }
+function requestDeviceCode() {
+  const tmpFile = `/tmp/openclaw-devcode-${crypto.randomBytes(8).toString('hex')}.json`;
+  try {
+    fs.writeFileSync(tmpFile, JSON.stringify({ client_id: OPENAI_OAUTH_CLIENT_ID }), 'utf8');
+    const result = shell(
+      `curl -sf --max-time 20 -X POST '${OPENAI_DEVICE_USERCODE_URL}' \
+        -H 'Content-Type: application/json' ${openaiOAuthHeaderArgs()} \
+        --data-binary @${tmpFile}`,
+      25000
+    );
+    const body = JSON.parse(result);
+    const deviceAuthId = body?.device_auth_id;
+    const userCode = body?.user_code || body?.usercode;
+    if (!deviceAuthId || !userCode) {
+      throw new Error('Device code response missing device_auth_id or user_code');
+    }
+    const intervalSec = Number(body?.interval);
+    const intervalMs = Number.isFinite(intervalSec) && intervalSec > 0
+      ? Math.max(intervalSec * 1000, OPENAI_DEVICE_MIN_INTERVAL_MS)
+      : OPENAI_DEVICE_DEFAULT_INTERVAL_MS;
+    return { deviceAuthId, userCode, intervalMs, verificationUrl: OPENAI_DEVICE_VERIFY_URL };
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch {}
+  }
+}
+
+// One poll attempt against /api/accounts/deviceauth/token.
+// Returns { status: 'pending' } while user hasn't approved (HTTP 403/404),
+// { status: 'ready', authorizationCode, codeVerifier } on success,
+// or throws on a hard error.
+function pollDeviceCodeOnce(deviceAuthId, userCode) {
+  const tmpFile = `/tmp/openclaw-devpoll-${crypto.randomBytes(8).toString('hex')}.json`;
+  try {
+    fs.writeFileSync(tmpFile, JSON.stringify({ device_auth_id: deviceAuthId, user_code: userCode }), 'utf8');
+    // -w appends HTTP status so we can distinguish pending (403/404) from success.
+    const raw = shell(
+      `curl -s --max-time 20 -X POST '${OPENAI_DEVICE_TOKEN_URL}' \
+        -H 'Content-Type: application/json' ${openaiOAuthHeaderArgs()} \
+        -w '\\n%{http_code}' \
+        --data-binary @${tmpFile}`,
+      25000
+    );
+    const idx = raw.lastIndexOf('\n');
+    const status = parseInt(raw.slice(idx + 1).trim(), 10);
+    const bodyText = raw.slice(0, idx).trim();
+    if (status === 200) {
+      const body = JSON.parse(bodyText || '{}');
+      const authorizationCode = body?.authorization_code;
+      const codeVerifier = body?.code_verifier;
+      if (!authorizationCode || !codeVerifier) {
+        throw new Error('Device authorization response missing exchange code');
+      }
+      return { status: 'ready', authorizationCode, codeVerifier };
+    }
+    if (status === 403 || status === 404) return { status: 'pending' };
+    let detail = bodyText;
+    try { const b = JSON.parse(bodyText); detail = b.error_description || b.error || bodyText; } catch {}
+    throw new Error(`Device authorization failed (HTTP ${status}): ${detail}`);
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch {}
+  }
+}
+
+// Exchange the device authorization_code + code_verifier for OAuth tokens.
+// Returns { access, refresh, expires (ms) } normalized for storeOAuthTokens.
+function exchangeDeviceCode(authorizationCode, codeVerifier) {
+  const tmpFile = `/tmp/openclaw-devexch-${crypto.randomBytes(8).toString('hex')}.dat`;
+  try {
+    const params = [
+      `grant_type=authorization_code`,
+      `client_id=${encodeURIComponent(OPENAI_OAUTH_CLIENT_ID)}`,
+      `code=${encodeURIComponent(authorizationCode)}`,
+      `code_verifier=${encodeURIComponent(codeVerifier)}`,
+      `redirect_uri=${encodeURIComponent(OPENAI_DEVICE_CALLBACK_URL)}`
+    ].join('&');
+    fs.writeFileSync(tmpFile, params, 'utf8');
+    const result = shell(
+      `curl -sf --max-time 30 -X POST '${OPENAI_OAUTH_TOKEN_URL}' \
+        -H 'Content-Type: application/x-www-form-urlencoded' ${openaiOAuthHeaderArgs()} \
+        --data-binary @${tmpFile}`,
+      35000
+    );
+    const raw = JSON.parse(result);
+    if (!raw.access_token) return null;
+    return {
+      access: raw.access_token,
+      refresh: raw.refresh_token,
+      expires: typeof raw.expires_in === 'number' ? Date.now() + raw.expires_in * 1000 : null
+    };
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch {}
+  }
+}
+
+// Get stored OAuth profile for an agent.
+// Reads the unified "openai:*" key (2026.6.8) and legacy "openai-codex:*"/"openai:oauth"
+// keys for backward compatibility. Only returns profiles with type "oauth".
 function getOAuthProfile(agentId = 'main') {
   const data = readAgentAuth(agentId);
   const profiles = data.profiles || {};
+  const prefixes = [OPENAI_OAUTH_PROFILE, ...OPENAI_OAUTH_LEGACY_KEYS];
   for (const [k, v] of Object.entries(profiles)) {
-    if (k.startsWith(`${OPENAI_OAUTH_PROFILE}:`) && v && v.access) return { key: k, ...v };
+    if (!v || !v.access || v.type !== 'oauth') continue;
+    if (prefixes.some(p => k === p || k.startsWith(`${p}:`))) return { key: k, ...v };
   }
   return null;
 }
@@ -827,6 +963,92 @@ function pruneOAuthSessions() {
   const now = Date.now();
   for (const id of Object.keys(_oauthSessions)) {
     if (now - _oauthSessions[id].createdAt > OAUTH_SESSION_TTL) delete _oauthSessions[id];
+  }
+}
+
+// Set agents.defaults.model.primary in config and restart OpenClaw.
+// Shared by both OAuth flows (device-code + PKCE). Returns the model written.
+function applyOAuthModel(model) {
+  const finalModel = model || OPENAI_CODEX_DEFAULT_MODEL;
+  let config;
+  try { config = readConfig(); } catch { config = {}; }
+  if (!config.agents) config.agents = { defaults: { model: {}, maxConcurrent: 4, subagents: { maxConcurrent: 8 } } };
+  if (!config.agents.defaults) config.agents.defaults = { model: {}, maxConcurrent: 4, subagents: { maxConcurrent: 8 } };
+  if (!config.agents.defaults.model) config.agents.defaults.model = {};
+  config.agents.defaults.model.primary = finalModel;
+  writeConfig(config);
+  restartService(OPENCLAW_SERVICE);
+  return finalModel;
+}
+
+// Background poll loop for a device-code session. Drives one session to terminal
+// state ('ready' → tokens stored, or 'error'/'expired'). Self-schedules.
+function pollDeviceSession(sessionId) {
+  const s = _deviceSessions[sessionId];
+  if (!s || s.status !== 'pending') return;
+
+  if (Date.now() >= s.deadline) {
+    s.status = 'expired';
+    s.error = 'Device authorization timed out. Start a new session.';
+    return;
+  }
+
+  let outcome;
+  try {
+    outcome = pollDeviceCodeOnce(s.deviceAuthId, s.userCode);
+  } catch (e) {
+    s.status = 'error';
+    s.error = e.message;
+    return;
+  }
+
+  if (outcome.status === 'pending') {
+    s.timer = setTimeout(() => pollDeviceSession(sessionId), s.intervalMs);
+    return;
+  }
+
+  // outcome.status === 'ready' → exchange code for tokens, store, switch model
+  try {
+    const tokens = exchangeDeviceCode(outcome.authorizationCode, outcome.codeVerifier);
+    if (!tokens || !tokens.access) throw new Error('Token exchange returned no access token');
+
+    const stored = storeOAuthTokens(tokens, s.agentId);
+    let switchedModel = null;
+    if (s.switchProvider !== false) {
+      try { switchedModel = applyOAuthModel(s.model); }
+      catch (e) { s.switchError = e.message; }
+    } else {
+      restartService(OPENCLAW_SERVICE);
+    }
+
+    s.status = 'ready';
+    s.result = {
+      agentId: s.agentId,
+      profileKey: stored.profileKey,
+      accountId: stored.accountId,
+      email: stored.email,
+      switchedProvider: s.switchProvider !== false && !s.switchError,
+      model: switchedModel,
+      switchError: s.switchError || undefined,
+      expiresAt: tokens.expires || null
+    };
+    console.log(`[OAuth] Device-code login complete for agent "${s.agentId}" (${stored.email || stored.profileKey})`);
+  } catch (e) {
+    s.status = 'error';
+    s.error = 'Token exchange failed: ' + e.message;
+  }
+}
+
+// Cleanup finished/expired device sessions (older than TTL past creation).
+function pruneDeviceSessions() {
+  const now = Date.now();
+  for (const id of Object.keys(_deviceSessions)) {
+    const s = _deviceSessions[id];
+    const expired = now - s.createdAt > (OPENAI_DEVICE_TIMEOUT_MS + 2 * 60 * 1000);
+    if (expired) {
+      if (s.timer) clearTimeout(s.timer);
+      delete _deviceSessions[id];
+    }
   }
 }
 
@@ -2944,8 +3166,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // POST /api/config/chatgpt-oauth/start — Bat dau ChatGPT OAuth flow
-  // Returns: { sessionId, oauthUrl } — user mo oauthUrl trong browser
+  // POST /api/config/chatgpt-oauth/start — PKCE browser flow (fallback)
+  // Returns: { sessionId, oauthUrl } — user opens oauthUrl in a browser.
+  // For headless VPS prefer the device-code flow (/chatgpt-oauth/device/start).
   // =========================================================================
   if (route(req, 'POST', '/api/config/chatgpt-oauth/start')) {
     try {
@@ -2967,7 +3190,7 @@ const server = http.createServer(async (req, res) => {
         state,
         id_token_add_organizations: 'true',
         codex_cli_simplified_flow: 'true',
-        originator: 'pi'
+        originator: 'openclaw'
       });
       const oauthUrl = `${OPENAI_OAUTH_AUTH_URL}?${params.toString()}`;
 
@@ -2981,9 +3204,98 @@ const server = http.createServer(async (req, res) => {
         oauthUrl,
         models: codexModels,
         defaultModel: codexModels.find(m => m.default)?.id || codexModels[0].id,
-        instructions: 'Open oauthUrl in browser. After login, copy the full redirect URL (localhost:1455/auth/callback?code=...) and POST to /api/config/chatgpt-oauth/complete with { sessionId, redirectUrl, model? }',
+        instructions: 'Open oauthUrl in browser. After login, copy the full redirect URL (localhost:1455/auth/callback?code=...) and POST to /api/config/chatgpt-oauth/complete with { sessionId, redirectUrl, model? }. On a headless VPS, prefer POST /api/config/chatgpt-oauth/device/start instead.',
         sessionExpiresIn: OAUTH_SESSION_TTL / 1000
       });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/config/chatgpt-oauth/device/start — Begin device-code flow
+  // Body: { agentId?, model?, switchProvider? }
+  // Returns: { sessionId, verificationUrl, userCode, expiresIn } — show these
+  // to the user. Server polls in the background; poll /device/status for result.
+  // =========================================================================
+  if (route(req, 'POST', '/api/config/chatgpt-oauth/device/start')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const agentId = (body.agentId && isValidAgentId(body.agentId)) ? body.agentId : 'main';
+
+      let dc;
+      try {
+        dc = requestDeviceCode();
+      } catch (e) {
+        return json(res, 502, { ok: false, error: 'Failed to request device code: ' + e.message });
+      }
+
+      pruneDeviceSessions();
+      const sessionId = crypto.randomBytes(16).toString('hex');
+      const now = Date.now();
+      _deviceSessions[sessionId] = {
+        deviceAuthId: dc.deviceAuthId,
+        userCode: dc.userCode,
+        verificationUrl: dc.verificationUrl,
+        intervalMs: dc.intervalMs,
+        agentId,
+        model: body.model || null,
+        switchProvider: body.switchProvider,
+        createdAt: now,
+        deadline: now + OPENAI_DEVICE_TIMEOUT_MS,
+        status: 'pending',
+        timer: null
+      };
+      // Kick off background polling (first attempt after one interval).
+      _deviceSessions[sessionId].timer = setTimeout(() => pollDeviceSession(sessionId), dc.intervalMs);
+
+      const codexModels = PROVIDERS['openai-codex'].knownModels;
+      return json(res, 200, {
+        ok: true,
+        sessionId,
+        verificationUrl: dc.verificationUrl,
+        userCode: dc.userCode,
+        models: codexModels,
+        defaultModel: codexModels.find(m => m.default)?.id || codexModels[0].id,
+        instructions: `Open ${dc.verificationUrl} on any device, enter the code "${dc.userCode}", and approve. Then poll GET /api/config/chatgpt-oauth/device/status?sessionId=${sessionId}.`,
+        expiresIn: Math.round(OPENAI_DEVICE_TIMEOUT_MS / 1000)
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/config/chatgpt-oauth/device/status?sessionId=... — Poll device flow
+  // Returns: { status: pending|ready|error|expired, ... }
+  // =========================================================================
+  if (route(req, 'GET', '/api/config/chatgpt-oauth/device/status')) {
+    try {
+      const { query } = route(req, 'GET', '/api/config/chatgpt-oauth/device/status');
+      const sessionId = query && query.sessionId;
+      if (!sessionId) return json(res, 400, { ok: false, error: 'Missing sessionId' });
+
+      pruneDeviceSessions();
+      const s = _deviceSessions[sessionId];
+      if (!s) return json(res, 404, { ok: false, error: 'Session not found or expired. Start a new device login.' });
+
+      const base = {
+        ok: true,
+        status: s.status,
+        verificationUrl: s.verificationUrl,
+        userCode: s.userCode,
+        expiresIn: Math.max(0, Math.round((s.deadline - Date.now()) / 1000))
+      };
+      if (s.status === 'ready') {
+        const out = json(res, 200, { ...base, ...s.result });
+        // Session consumed — clean up so tokens aren't replayed.
+        if (s.timer) clearTimeout(s.timer);
+        delete _deviceSessions[sessionId];
+        return out;
+      }
+      if (s.status === 'error' || s.status === 'expired') {
+        const out = json(res, 200, { ...base, error: s.error });
+        if (s.timer) clearTimeout(s.timer);
+        delete _deviceSessions[sessionId];
+        return out;
+      }
+      return json(res, 200, base);
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
@@ -3046,21 +3358,12 @@ const server = http.createServer(async (req, res) => {
       const stored = storeOAuthTokens(tokens, session.agentId);
       delete _oauthSessions[sessionId];
 
-      // Switch provider to openai-codex (default: true unless switchProvider=false)
+      // Switch model to ChatGPT OAuth (default: true unless switchProvider=false)
       const shouldSwitch = body.switchProvider !== false;
       let switchedModel = null;
       if (shouldSwitch) {
         try {
-          const finalModel = body.model || 'openai-codex/gpt-5.4';
-          let config;
-          try { config = readConfig(); } catch { config = {}; }
-          if (!config.agents) config.agents = { defaults: { model: {}, maxConcurrent: 4, subagents: { maxConcurrent: 8 } } };
-          if (!config.agents.defaults) config.agents.defaults = { model: {}, maxConcurrent: 4, subagents: { maxConcurrent: 8 } };
-          if (!config.agents.defaults.model) config.agents.defaults.model = {};
-          config.agents.defaults.model.primary = finalModel;
-          writeConfig(config);
-          restartService(OPENCLAW_SERVICE);
-          switchedModel = finalModel;
+          switchedModel = applyOAuthModel(body.model);
         } catch (e) {
           return json(res, 200, { ok: true, agentId: session.agentId, tokensStored: true, profileKey: stored.profileKey, accountId: stored.accountId, switchedProvider: false, switchError: e.message });
         }
@@ -3135,6 +3438,49 @@ const server = http.createServer(async (req, res) => {
         expired: expires ? expires < now : null,
         activeSessions: Object.keys(_oauthSessions).length
       });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/doctor — Run `openclaw doctor --fix`
+  // Migrates legacy auth profiles (openai-codex → openai), repairs config/auth.
+  // Body: { restart? } — restart OpenClaw afterwards (default: true)
+  // =========================================================================
+  if (route(req, 'POST', '/api/doctor')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      let output = '';
+      let ok = true;
+      try {
+        output = openclawExec('doctor --fix', 120000);
+      } catch (e) {
+        ok = false;
+        output = (e.stdout ? e.stdout.toString() : '') + (e.stderr ? e.stderr.toString() : '') || e.message;
+      }
+      if (body.restart !== false) {
+        try { restartService(OPENCLAW_SERVICE); } catch {}
+      }
+      return json(res, 200, { ok, output: output.slice(-8000) });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/models/status — Run `openclaw models status` (optional ?probe=1)
+  // Shows resolved auth profiles, model availability and probe reason codes.
+  // =========================================================================
+  if (route(req, 'GET', '/api/models/status')) {
+    try {
+      const { query } = route(req, 'GET', '/api/models/status');
+      const probe = query && (query.probe === '1' || query.probe === 'true');
+      let output = '';
+      let ok = true;
+      try {
+        output = openclawExec(`models status${probe ? ' --probe' : ''}`, 60000);
+      } catch (e) {
+        ok = false;
+        output = (e.stdout ? e.stdout.toString() : '') + (e.stderr ? e.stderr.toString() : '') || e.message;
+      }
+      return json(res, 200, { ok, probe: !!probe, output: output.slice(-12000) });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
