@@ -521,6 +521,12 @@ for i in $(seq 1 24); do
     sleep 5
 done
 
+# Khoi tao auth store (SQLite) + nap credential tu auth-profiles.json neu co.
+# OpenClaw 2026.6.x doc credential tu openclaw-agent.sqlite, doctor se import.
+log "Khoi tao auth store..."
+HOME=${INSTALL_DIR} $(which openclaw) doctor --fix --yes --non-interactive >/dev/null 2>&1 || \
+    log "Canh bao: doctor --fix chua chay duoc (se chay lai khi cau hinh provider)."
+
 # =============================================================================
 # 13. Cai dat Management API
 # =============================================================================

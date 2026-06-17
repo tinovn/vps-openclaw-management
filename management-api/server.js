@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '2.1.0';
+const MGMT_VERSION = '2.1.1';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const OPENCLAW_BIN = 'openclaw';
@@ -278,16 +278,22 @@ function getAgentAuthFile(agentId) {
 
 function readAgentAuth(agentId) {
   try {
-    return JSON.parse(fs.readFileSync(getAgentAuthFile(agentId), 'utf8'));
+    const data = JSON.parse(fs.readFileSync(getAgentAuthFile(agentId), 'utf8'));
+    if (typeof data.version !== 'number') data.version = 1;
+    if (!data.profiles) data.profiles = {};
+    return data;
   } catch {
-    return { profiles: {} };
+    return { version: 1, profiles: {} };
   }
 }
 
-function writeAgentAuth(agentId, profiles) {
+// OpenClaw's auth store format is { version: 1, profiles: {...} }. `openclaw doctor`
+// reads this file and imports it into the SQLite auth store (openclaw-agent.sqlite).
+function writeAgentAuth(agentId, data) {
   const dir = getAgentAuthDir(agentId);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(getAgentAuthFile(agentId), JSON.stringify(profiles, null, 2), 'utf8');
+  const out = { version: typeof data.version === 'number' ? data.version : 1, profiles: data.profiles || {} };
+  fs.writeFileSync(getAgentAuthFile(agentId), JSON.stringify(out, null, 2), 'utf8');
 }
 
 function setAgentApiKey(agentId, providerName, apiKey) {
@@ -978,8 +984,33 @@ function applyOAuthModel(model) {
   if (!config.agents.defaults.model) config.agents.defaults.model = {};
   config.agents.defaults.model.primary = finalModel;
   writeConfig(config);
-  restartService(OPENCLAW_SERVICE);
   return finalModel;
+}
+
+// `openclaw doctor` non-interactive: --fix (alias --repair) applies safe repairs,
+// --yes/--non-interactive avoid prompts (e.g. "Repair legacy auth-profiles.json?").
+// This is how written auth-profiles.json gets loaded into the SQLite auth store.
+const DOCTOR_CMD = 'doctor --fix --yes --non-interactive';
+
+// Migrate the JSON auth profiles we wrote into OpenClaw's SQLite auth store.
+// OpenClaw 2026.6.x reads credentials from openclaw-agent.sqlite at runtime, NOT
+// from auth-profiles.json, so doctor must import them. Returns true on success.
+function migrateAuthToSqlite() {
+  try {
+    const out = openclawExec(DOCTOR_CMD, 120000);
+    console.log('[OAuth] doctor migrate:', out.slice(-1500));
+    return true;
+  } catch (e) {
+    console.error('[OAuth] doctor migrate failed:', e.message);
+    return false;
+  }
+}
+
+// After writing tokens to auth-profiles.json, import them into SQLite then restart
+// OpenClaw so it picks up the new credentials. Shared by all OAuth completion paths.
+function finalizeAuth() {
+  migrateAuthToSqlite();
+  restartService(OPENCLAW_SERVICE);
 }
 
 // Background poll loop for a device-code session. Drives one session to terminal
@@ -1018,9 +1049,9 @@ function pollDeviceSession(sessionId) {
     if (s.switchProvider !== false) {
       try { switchedModel = applyOAuthModel(s.model); }
       catch (e) { s.switchError = e.message; }
-    } else {
-      restartService(OPENCLAW_SERVICE);
     }
+    // Import tokens into SQLite auth store, then restart OpenClaw.
+    finalizeAuth();
 
     s.status = 'ready';
     s.result = {
@@ -1595,14 +1626,7 @@ const server = http.createServer(async (req, res) => {
           console.log('[MGMT] Upgrade completed:', err ? 'FAILED' : 'OK');
           if (stdout) console.log(stdout);
           if (stderr) console.error(stderr);
-          if (runDoctor) {
-            try {
-              const out = openclawExec('doctor --fix', 120000);
-              console.log('[MGMT] doctor --fix:', out.slice(-2000));
-            } catch (e) {
-              console.error('[MGMT] doctor --fix failed:', e.message);
-            }
-          }
+          if (runDoctor) migrateAuthToSqlite();
           try { execSync(`systemctl restart ${OPENCLAW_SERVICE}`, { timeout: 30000 }); } catch {}
         });
       return json(res, 202, { ok: true, message: 'Upgrade started (npm install + doctor --fix). Check /api/status for progress.' });
@@ -1962,7 +1986,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       writeConfig(config);
-      restartService(OPENCLAW_SERVICE);
+      finalizeAuth();
 
       return json(res, 200, { ok: true, provider, model: config.agents.defaults.model.primary });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -1989,10 +2013,10 @@ const server = http.createServer(async (req, res) => {
         setEnvValue(providerConfig.envKey, apiKey);
       }
 
-      // 2. Write auth-profiles.json for the target agent
+      // 2. Write auth-profiles.json for the target agent, import into SQLite, restart
       setAuthProfileApiKey(providerConfig.authProfileProvider, apiKey, targetAgent);
 
-      restartService(OPENCLAW_SERVICE);
+      finalizeAuth();
 
       return json(res, 200, { ok: true, provider, agentId: targetAgent, apiKey: sanitizeKey(apiKey) });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2021,7 +2045,7 @@ const server = http.createServer(async (req, res) => {
         removeEnvValue(providerConfig.envKey);
       }
 
-      restartService(OPENCLAW_SERVICE);
+      finalizeAuth();
 
       return json(res, 200, { ok: true, provider, agentId: targetAgent, removed: true });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2118,7 +2142,7 @@ const server = http.createServer(async (req, res) => {
       if (!config.browser) config.browser = tpl.browser;
       writeConfig(config);
 
-      restartService(OPENCLAW_SERVICE);
+      finalizeAuth();
 
       return json(res, 200, { ok: true, provider: providerName, model, baseUrl, apiKey: sanitizeKey(apiKey) });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2205,14 +2229,19 @@ const server = http.createServer(async (req, res) => {
       fs.writeFileSync(tplPath, JSON.stringify(tpl, null, 2), 'utf8');
 
       // Also update active config if this provider is currently in use
+      let activeRestarted = false;
       try {
         const config = readConfig();
         if (config.models?.providers?.[providerName]) {
           config.models.providers[providerName] = { ...p };
           writeConfig(config);
-          restartService(OPENCLAW_SERVICE);
+          finalizeAuth(); // import any updated key into SQLite + restart
+          activeRestarted = true;
         }
       } catch {}
+
+      // If a new key was written but the provider isn't active, still import it.
+      if (body.apiKey && !activeRestarted) migrateAuthToSqlite();
 
       return json(res, 200, { ok: true, provider: providerName, config: { baseUrl: p.baseUrl, api: p.api, models: p.models } });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2857,7 +2886,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       setAgentApiKey(agentId, providerConfig.authProfileProvider, apiKey);
-      restartService(OPENCLAW_SERVICE);
+      finalizeAuth();
 
       return json(res, 200, { ok: true, agentId, provider, apiKey: sanitizeKey(apiKey) });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -3375,24 +3404,23 @@ const server = http.createServer(async (req, res) => {
       // Switch model to ChatGPT OAuth (default: true unless switchProvider=false)
       const shouldSwitch = body.switchProvider !== false;
       let switchedModel = null;
+      let switchError = null;
       if (shouldSwitch) {
-        try {
-          switchedModel = applyOAuthModel(body.model);
-        } catch (e) {
-          return json(res, 200, { ok: true, agentId: session.agentId, tokensStored: true, profileKey: stored.profileKey, accountId: stored.accountId, switchedProvider: false, switchError: e.message });
-        }
-      } else {
-        restartService(OPENCLAW_SERVICE);
+        try { switchedModel = applyOAuthModel(body.model); }
+        catch (e) { switchError = e.message; }
       }
+      // Import tokens into SQLite auth store, then restart OpenClaw.
+      finalizeAuth();
 
       return json(res, 200, {
         ok: true,
         agentId: session.agentId,
         tokensStored: true,
+        switchError: switchError || undefined,
         profileKey: stored.profileKey,
         accountId: stored.accountId,
         email: stored.email,
-        switchedProvider: shouldSwitch,
+        switchedProvider: shouldSwitch && !switchError,
         model: switchedModel
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -3417,7 +3445,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       storeOAuthTokens(tokens, agentId);
-      restartService(OPENCLAW_SERVICE);
+      finalizeAuth();
 
       const expiresInMs = tokens.expires ? tokens.expires - Date.now() : null;
       return json(res, 200, {
@@ -3466,7 +3494,7 @@ const server = http.createServer(async (req, res) => {
       let output = '';
       let ok = true;
       try {
-        output = openclawExec('doctor --fix', 120000);
+        output = openclawExec(DOCTOR_CMD, 120000);
       } catch (e) {
         ok = false;
         output = (e.stdout ? e.stdout.toString() : '') + (e.stderr ? e.stderr.toString() : '') || e.message;
@@ -3812,7 +3840,7 @@ setInterval(() => {
       const result = tryRefreshAgent(agentId);
       if (result === 'refreshed') anyRefreshed = true;
     }
-    if (anyRefreshed) restartService(OPENCLAW_SERVICE);
+    if (anyRefreshed) finalizeAuth(); // import refreshed tokens into SQLite + restart
   } catch (e) {
     console.error(`[OAuth] Auto-refresh job error: ${e.message}`);
   }

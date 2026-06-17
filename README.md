@@ -240,6 +240,8 @@ curl -H "Authorization: Bearer $MGMT_KEY" \
 
 Token tự động refresh mỗi 5 phút khi còn dưới 10 phút. Hỗ trợ đọc profile cũ `openai-codex:*` để tương thích ngược.
 
+> **Lưu ý kỹ thuật:** OpenClaw 2026.6.x lưu credential trong SQLite (`openclaw-agent.sqlite`), không đọc `auth-profiles.json` lúc chạy. Management API ghi token vào `auth-profiles.json` rồi tự chạy `openclaw doctor --fix` để nạp vào SQLite trước khi restart (áp dụng cho cả OAuth lẫn API key).
+
 ### Chẩn đoán (Diagnostics)
 
 | Phương thức | Endpoint | Mô tả |

@@ -328,7 +328,9 @@ Tren VPS khong co browser → dung **device-code flow** (khong can copy-paste).
 | `POST` | `/api/config/chatgpt-oauth/refresh` | Refresh token thu cong (`{agentId?}`) |
 | `GET` | `/api/config/chatgpt-oauth/status` | Trang thai token hien tai (expires, accountId) |
 
-Device-code flow (verified OpenClaw 2026.6.8): `POST auth.openai.com/api/accounts/deviceauth/usercode` → hien `auth.openai.com/codex/device` + user_code → server poll `/api/accounts/deviceauth/token` → exchange `/oauth/token`. Header bat buoc: `originator: openclaw`. Token luu `auth-profiles.json` key `openai:<email>`.
+Device-code flow (verified OpenClaw 2026.6.8): `POST auth.openai.com/api/accounts/deviceauth/usercode` → hien `auth.openai.com/codex/device` + user_code → server poll `/api/accounts/deviceauth/token` → exchange `/oauth/token`. Header bat buoc: `originator: openclaw`.
+
+**Quan trong — Auth store la SQLite:** OpenClaw 2026.6.x doc credential tu `agents/main/agent/openclaw-agent.sqlite`, KHONG doc `auth-profiles.json` luc runtime. Management API ghi token vao `auth-profiles.json` (key `openai:<email>`, format `{version:1,profiles}`) ROI chay `openclaw doctor --fix --yes --non-interactive` de nap vao SQLite, sau do restart. Tat ca endpoint set credential (OAuth + API key) deu tu dong lam buoc nay (`finalizeAuth`).
 
 **Diagnostics**
 
