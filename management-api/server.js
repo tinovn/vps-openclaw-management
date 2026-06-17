@@ -2070,8 +2070,11 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'DELETE', '/api/config/api-key')) {
     try {
-      const body = await parseBody(req);
-      const { provider: rawProvider, agentId } = body;
+      // Accept provider/agentId from query string OR body (DELETE often has no body).
+      const { query } = route(req, 'DELETE', '/api/config/api-key');
+      const body = await parseBody(req).catch(() => ({}));
+      const rawProvider = body.provider || query.provider;
+      const agentId = body.agentId || query.agentId;
       const provider = resolveProvider(rawProvider);
 
       const providerConfig = PROVIDERS[provider];
