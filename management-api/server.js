@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '2.1.2';
+const MGMT_VERSION = '2.1.3';
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const OPENCLAW_BIN = 'openclaw';
@@ -288,7 +288,7 @@ function removeProviderFromSqlite(agentId, providerName) {
   catch { return -1; } // Node < 22.5 — caller falls back to doctor-only
   const db = new DatabaseSync(dbPath);
   try {
-    const rows = db.prepare('SELECT store_key, store_json FROM auth_profile_stores').all();
+    const rows = db.prepare('SELECT store_key, store_json FROM auth_profile_store').all();
     let removed = 0;
     for (const row of rows) {
       let store;
@@ -299,7 +299,7 @@ function removeProviderFromSqlite(agentId, providerName) {
         if (p && p.provider === providerName) { delete store.profiles[id]; removed++; changed = true; }
       }
       if (changed) {
-        db.prepare('UPDATE auth_profile_stores SET store_json = ?, updated_at = ? WHERE store_key = ?')
+        db.prepare('UPDATE auth_profile_store SET store_json = ?, updated_at = ? WHERE store_key = ?')
           .run(JSON.stringify(store), Date.now(), row.store_key);
       }
     }
