@@ -8,7 +8,7 @@ Triển khai và quản lý [OpenClaw](https://github.com/openclaw/openclaw) tr�
 - **Không Docker** — Chạy trực tiếp trên OS, tiết kiệm 200-500MB RAM
 - **Management API** — REST API (cổng 9998) để quản lý từ xa
 - **22+ nhà cung cấp AI** — Anthropic, OpenAI, Gemini, DeepSeek, ... + custom provider
-- **ChatGPT OAuth** — Tích hợp OpenAI Codex qua OAuth2 PKCE, tự động refresh token
+- **ChatGPT OAuth** — Đăng nhập OpenAI Codex bằng device-code (không cần browser) hoặc PKCE; đa tài khoản, tự refresh, ngắt kết nối từng tài khoản
 - **Đa agent** — Nhiều agent với model và API key độc lập, routing theo kênh
 - **Kênh nhắn tin** — Telegram, Discord, Slack, Zalo OA
 - **Tự động SSL** — Let's Encrypt qua Caddy, hoặc self-signed cho IP
