@@ -5,13 +5,24 @@
 // =============================================================================
 
 const http = require('http');
+const path = require('path');
 const { execSync, exec, spawn } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 
 const PORT = 9998;
-const MGMT_VERSION = '2.1.3';
+// Version is read from version.json next to server.js (single source of truth,
+// kept in sync by self-update). Falls back to this constant if the file is missing.
+const MGMT_VERSION_FALLBACK = '2.1.4';
+const MGMT_VERSION = (() => {
+  try {
+    const v = JSON.parse(fs.readFileSync(path.join(__dirname, 'version.json'), 'utf8'));
+    return (v && typeof v.version === 'string' && v.version.trim()) || MGMT_VERSION_FALLBACK;
+  } catch {
+    return MGMT_VERSION_FALLBACK;
+  }
+})();
 const GITHUB_REPO = 'tinovn/vps-openclaw-management';
 const COMPOSE_DIR = '/opt/openclaw';
 const OPENCLAW_BIN = 'openclaw';
@@ -2867,6 +2878,7 @@ const server = http.createServer(async (req, res) => {
       ];
       const files = [
         { url: `${REPO_RAW}/management-api/server.js`, dest: `${MGMT_API_DIR}/server.js` },
+        { url: `${REPO_RAW}/version.json`, dest: `${MGMT_API_DIR}/version.json` },
         { url: `${REPO_RAW}/Caddyfile`, dest: `${COMPOSE_DIR}/Caddyfile` },
         ...configTemplates.map(t => ({ url: `${REPO_RAW}/config/${t}.json`, dest: `${TEMPLATES_DIR}/${t}.json` }))
       ];

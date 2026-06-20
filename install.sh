@@ -539,6 +539,9 @@ done
 if [ ! -f ${MGMT_API_DIR}/server.js ]; then
     log "LOI: Khong tai duoc Management API server.js sau 3 lan"
 fi
+# version.json la single source of truth cho MGMT_VERSION (server.js doc tu day)
+curl -fsSL --retry 2 "${REPO_RAW}/version.json" -o ${MGMT_API_DIR}/version.json \
+    || log "Canh bao: Khong tai duoc version.json (se dung fallback trong server.js)"
 
 cat > /etc/systemd/system/openclaw-mgmt.service << EOF
 [Unit]
