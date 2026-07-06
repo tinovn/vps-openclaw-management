@@ -416,6 +416,13 @@ function setAgentApiKey(agentId, providerName, apiKey) {
 }
 
 function getAgentApiKey(agentId, providerName) {
+  const sqliteProfiles = readSqliteProfiles(agentId);
+  if (sqliteProfiles) {
+    for (const [id, profile] of Object.entries(sqliteProfiles)) {
+      if (profile && profile.provider === providerName && profile.key) return profile.key;
+    }
+  }
+
   const data = readAgentAuth(agentId);
   const profiles = data.profiles || {};
   for (const [id, profile] of Object.entries(profiles)) {
@@ -3177,14 +3184,17 @@ const server = http.createServer(async (req, res) => {
 
       const agents = list.map(agent => {
         const hasAuth = fs.existsSync(getAgentAuthFile(agent.id));
-        const authData = hasAuth ? readAgentAuth(agent.id) : { profiles: {} };
+        const sqliteProfiles = readSqliteProfiles(agent.id);
+        const authData = sqliteProfiles
+          ? { profiles: sqliteProfiles }
+          : (hasAuth ? readAgentAuth(agent.id) : { profiles: {} });
         const profileCount = Object.keys(authData.profiles || {}).length;
         return {
           id: agent.id,
           name: agent.name || agent.id,
           default: agent.id === defaultId,
           model: agent.model || null,
-          hasAuthProfiles: hasAuth,
+          hasAuthProfiles: hasAuth || !!sqliteProfiles,
           apiKeyCount: profileCount
         };
       });
