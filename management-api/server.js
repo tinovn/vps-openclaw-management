@@ -3009,7 +3009,8 @@ const server = http.createServer(async (req, res) => {
       if (!isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agent id' });
 
       const body = await parseBody(req);
-      const { provider, apiKey } = body;
+      const { apiKey } = body;
+      const provider = resolveProvider(body.provider);
 
       const providerConfig = PROVIDERS[provider];
       if (!providerConfig) return json(res, 400, { ok: false, error: 'Invalid provider' });
