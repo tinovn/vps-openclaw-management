@@ -34,6 +34,45 @@ const CADDYFILE = `${COMPOSE_DIR}/Caddyfile`;
 const TEMPLATES_DIR = '/etc/openclaw/config';
 const AUTH_PROFILES_DIR = `${CONFIG_DIR}/agents/main/agent`;
 const AUTH_PROFILES_FILE = `${AUTH_PROFILES_DIR}/auth-profiles.json`;
+const OPENCLAW_HOME_DIR = `${COMPOSE_DIR}/.openclaw`;
+
+// ---------------------------------------------------------------------------
+// ensureRealConfigDir — OpenClaw >= 2026.9.1 ghi file bang atomic-replace va
+// tu choi neu thu muc cha la symlink:
+//   "Atomic replace parent must be a real directory: /opt/openclaw/.openclaw"
+// Layout cu (.openclaw -> config) lam gateway crash-loop. Dao lai: .openclaw la
+// thu muc that, config la symlink tro toi no (giu nguyen moi duong dan cu).
+// ---------------------------------------------------------------------------
+function ensureRealConfigDir() {
+  try {
+    const homeIsLink = fs.lstatSync(OPENCLAW_HOME_DIR).isSymbolicLink();
+    if (homeIsLink) {
+      const target = fs.realpathSync(OPENCLAW_HOME_DIR);
+      fs.unlinkSync(OPENCLAW_HOME_DIR);
+      if (target !== OPENCLAW_HOME_DIR && fs.existsSync(target)) {
+        fs.renameSync(target, OPENCLAW_HOME_DIR);
+      }
+      console.log('[MGMT] Migrated .openclaw symlink -> real directory');
+    }
+  } catch (e) {
+    if (e.code !== 'ENOENT') console.error('[MGMT] ensureRealConfigDir:', e.message);
+  }
+  try { fs.mkdirSync(OPENCLAW_HOME_DIR, { recursive: true }); } catch {}
+  try {
+    if (!fs.lstatSync(CONFIG_DIR).isSymbolicLink()) {
+      execSync(`cp -an ${CONFIG_DIR}/. ${OPENCLAW_HOME_DIR}/ 2>/dev/null || true`);
+      fs.rmSync(CONFIG_DIR, { recursive: true, force: true });
+      fs.symlinkSync(OPENCLAW_HOME_DIR, CONFIG_DIR);
+      console.log('[MGMT] Recreated config as symlink -> .openclaw');
+    }
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      try { fs.symlinkSync(OPENCLAW_HOME_DIR, CONFIG_DIR); } catch {}
+    } else {
+      console.error('[MGMT] ensureRealConfigDir(config):', e.message);
+    }
+  }
+}
 
 // --- GitHub version check (cached) ---
 let _latestVersionCache = { version: null, checkedAt: 0 };
@@ -1755,6 +1794,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req).catch(() => ({}));
       const runDoctor = body.doctor !== false;
+      ensureRealConfigDir();
       exec(`npm install -g openclaw@latest`,
         { timeout: 300000 }, (err, stdout, stderr) => {
           console.log('[MGMT] Upgrade completed:', err ? 'FAILED' : 'OK');
@@ -4050,6 +4090,8 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+
+ensureRealConfigDir();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[Management API] Running on http://0.0.0.0:${PORT}`);

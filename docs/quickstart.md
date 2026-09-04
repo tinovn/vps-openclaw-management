@@ -99,9 +99,9 @@ curl -X PUT \
 ```
 /opt/openclaw/                          # Thư mục chính
 ├── .env                                # Biến môi trường (tokens, API keys)
-├── .openclaw -> config/                # Symlink
+├── .openclaw/                          # Thư mục thật (OpenClaw đọc từ đây)
 ├── Caddyfile                           # Cấu hình reverse proxy + SSL
-├── config/
+├── config -> .openclaw/                # Symlink tương thích ngược
 │   ├── openclaw.json                   # Cấu hình hiện tại (model, gateway, browser)
 │   ├── devices/
 │   │   ├── pending.json                # Thiết bị đang chờ ghép nối

@@ -201,15 +201,29 @@ ufw --force enable
 # 7. Tao thu muc cai dat
 # =============================================================================
 log "Tao thu muc cai dat..."
-mkdir -p ${INSTALL_DIR}/config
 mkdir -p ${INSTALL_DIR}/data
-mkdir -p ${INSTALL_DIR}/.openclaw
 mkdir -p ${MGMT_API_DIR}
 
-# Symlink config -> .openclaw (OpenClaw reads from HOME/.openclaw)
-if [ ! -L "${INSTALL_DIR}/.openclaw" ] || [ "$(readlink -f ${INSTALL_DIR}/.openclaw)" != "${INSTALL_DIR}/config" ]; then
-    rm -rf ${INSTALL_DIR}/.openclaw
-    ln -sf ${INSTALL_DIR}/config ${INSTALL_DIR}/.openclaw
+# OpenClaw >= 2026.9.1 ghi file bang atomic-replace va tu choi neu thu muc cha
+# la symlink ("Atomic replace parent must be a real directory").
+# => .openclaw phai la THU MUC THAT; config la symlink tro toi .openclaw
+#    (giu nguyen duong dan /opt/openclaw/config cho Management API va docs).
+if [ -L "${INSTALL_DIR}/.openclaw" ]; then
+    # Layout cu: .openclaw -> config. Dao nguoc lai.
+    OLD_CFG=$(readlink -f "${INSTALL_DIR}/.openclaw")
+    rm -f ${INSTALL_DIR}/.openclaw
+    if [ -d "${OLD_CFG}" ] && [ "${OLD_CFG}" != "${INSTALL_DIR}/.openclaw" ]; then
+        mv "${OLD_CFG}" ${INSTALL_DIR}/.openclaw
+    fi
+fi
+mkdir -p ${INSTALL_DIR}/.openclaw
+
+if [ ! -L "${INSTALL_DIR}/config" ]; then
+    if [ -d "${INSTALL_DIR}/config" ]; then
+        cp -an ${INSTALL_DIR}/config/. ${INSTALL_DIR}/.openclaw/ 2>/dev/null || true
+        rm -rf ${INSTALL_DIR}/config
+    fi
+    ln -sfn ${INSTALL_DIR}/.openclaw ${INSTALL_DIR}/config
 fi
 
 # =============================================================================

@@ -60,9 +60,9 @@ Tất cả chạy trực tiếp trên OS, quản lý bằng **systemd**:
 ```
 /opt/openclaw/                     # Thư mục chính
 ├── .env                           # Token, API key, domain config
-├── .openclaw -> config/           # Symlink (OpenClaw đọc config từ đây)
+├── .openclaw/                     # Thư mục thật — OpenClaw đọc config từ đây
 ├── Caddyfile                      # Cấu hình Caddy (dùng env vars)
-├── config/
+├── config -> .openclaw/           # Symlink tương thích ngược
 │   ├── openclaw.json              # Cấu hình đang sử dụng
 │   ├── devices/
 │   │   ├── pending.json           # Devices đang chờ approve
