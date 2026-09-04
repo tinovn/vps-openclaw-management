@@ -39,9 +39,9 @@ Internet
 ```
 /opt/openclaw/                     # Thu muc chinh
 ├── .env                           # Tat ca config (tokens, keys, domain)
-├── .openclaw -> config/           # Symlink — OpenClaw doc config tu day
+├── .openclaw/                     # Thu muc THAT — OpenClaw doc config tu day
 ├── Caddyfile                      # Caddy config (dung env vars tu .env)
-├── config/
+├── config -> .openclaw/           # Symlink tuong thich nguoc
 │   ├── openclaw.json              # Config chinh (model, provider, gateway)
 │   ├── devices/
 │   │   ├── pending.json           # Devices dang cho approve
@@ -203,6 +203,23 @@ ss -tlnp | grep 18789
 # Thu start thu cong
 HOME=/opt/openclaw openclaw gateway --port 18789 --allow-unconfigured
 ```
+
+**Loi "Atomic replace parent must be a real directory: /opt/openclaw/.openclaw"**
+
+OpenClaw >= 2026.9.1 ghi file bang atomic-replace va tu choi neu thu muc cha la
+symlink. Layout cu (`.openclaw -> config`) lam gateway crash-loop. Dao lai:
+
+```bash
+systemctl stop openclaw
+cd /opt/openclaw
+rm -f .openclaw && mv config .openclaw     # .openclaw thanh thu muc that
+ln -sfn /opt/openclaw/.openclaw /opt/openclaw/config
+HOME=/opt/openclaw openclaw doctor --fix --yes --non-interactive
+systemctl start openclaw
+```
+
+Management API tu chay buoc nay khi khoi dong va truoc `/api/upgrade`
+(`ensureRealConfigDir`), nen `POST /api/self-update` cung sua duoc.
 
 ### Caddy loi SSL
 
