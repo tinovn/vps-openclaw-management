@@ -666,17 +666,20 @@ const PROVIDERS = {
     authProfileProvider: 'openai', // 2026.6.8 unified ChatGPT OAuth under "openai"
     configTemplate: `${TEMPLATES_DIR}/openai-codex.json`,
     oauthOnly: true,           // Requires ChatGPT OAuth, no API key support
-    // Model IDs use the "openai/" prefix (unified provider). Verified default: openai/gpt-5.5
+    // Model IDs use the "openai/" prefix (unified provider). Synced with OpenClaw 2026.9.4
+    // (extensions/openai/model-route-contract.ts OPENAI_CHATGPT_MODERN_MODEL_IDS).
+    // Default kept at openai/gpt-5.5: gpt-6-astra access is still rolling out and OpenClaw
+    // does not fall back automatically. GPT-5.4 / 5.4-Mini are retired from the ChatGPT route
+    // (doctor --fix rewrites them to 5.6-terra / 5.6-luna); legacy gpt-5.x-codex ids dropped.
     knownModels: [
       { id: 'openai/gpt-5.5',              name: 'GPT-5.5',            default: true },
+      { id: 'openai/gpt-6-astra',          name: 'GPT-6 Astra' },
+      { id: 'openai/gpt-5.6-sol',          name: 'GPT-5.6 Sol' },
+      { id: 'openai/gpt-5.6-terra',        name: 'GPT-5.6 Terra' },
+      { id: 'openai/gpt-5.6-luna',         name: 'GPT-5.6 Luna' },
       { id: 'openai/gpt-5.5-pro',          name: 'GPT-5.5 Pro' },
-      { id: 'openai/gpt-5.4',              name: 'GPT-5.4' },
-      { id: 'openai/gpt-5.4-codex',        name: 'GPT-5.4-Codex' },
-      { id: 'openai/gpt-5.4-mini',         name: 'GPT-5.4-Mini' },
-      { id: 'openai/gpt-5.3-codex',        name: 'GPT-5.3-Codex' },
-      { id: 'openai/gpt-5.3-codex-spark',  name: 'GPT-5.3-Codex-Spark' },
-      { id: 'openai/gpt-5.2-codex',        name: 'GPT-5.2-Codex' },
-      { id: 'openai/gpt-5.1-codex-max',    name: 'GPT-5.1-Codex-Max' }
+      { id: 'openai/gpt-5.4-pro',          name: 'GPT-5.4 Pro' },
+      { id: 'openai/gpt-5.3-codex-spark',  name: 'GPT-5.3-Codex-Spark' }
     ],
     testFn: () => false  // OAuth token — cannot test with static key
   },
