@@ -1152,34 +1152,6 @@ function getOAuthProfile(agentId = 'main') {
   return listOAuthProfiles(agentId)[0] || null;
 }
 
-// Attempt to refresh tokens for a single agent. Returns 'refreshed' | 'skipped' | 'error'
-// seen: refresh token da xu ly trong vong nay — store dung chung (2026.9) hien o moi
-// agent; refresh 2 lan cung 1 token thi lan sau dung token da bi OpenAI xoay vong.
-function tryRefreshAgent(agentId, seen = new Set()) {
-  try {
-    const profile = getOAuthProfile(agentId);
-    if (!profile || !profile.refresh) return 'skipped';
-    if (seen.has(profile.refresh)) return 'skipped';
-    seen.add(profile.refresh);
-
-    const now = Date.now();
-    // expires is in milliseconds; refresh if < 10 min remaining or expired
-    const needsRefresh = !profile.expires || (profile.expires - now) < 600000;
-    if (!needsRefresh) return 'skipped';
-
-    const tokens = refreshOAuthToken(profile.refresh);
-    if (!tokens || !tokens.access) return 'error';
-
-    storeOAuthTokens(tokens, agentId);
-    const remaining = tokens.expires ? Math.round((tokens.expires - Date.now()) / 1000) : '?';
-    console.log(`[OAuth] Refreshed token for agent "${agentId}" (expires in ${remaining}s)`);
-    return 'refreshed';
-  } catch (e) {
-    console.error(`[OAuth] Auto-refresh failed for agent "${agentId}": ${e.message}`);
-    return 'error';
-  }
-}
-
 // Cleanup expired OAuth sessions
 function pruneOAuthSessions() {
   const now = Date.now();
@@ -4116,34 +4088,8 @@ try {
   }
 } catch {}
 
-// =============================================================================
-// Auto-refresh OAuth tokens background job (runs every 5 minutes)
-// =============================================================================
-setInterval(() => {
-  try {
-    // Collect all known agent IDs from config + scan agents dir
-    const agentIds = new Set(['main']);
-    try {
-      const config = JSON.parse(fs.readFileSync(`${CONFIG_DIR}/openclaw.json`, 'utf8'));
-      for (const a of (config?.agents?.list || [])) {
-        if (a.id) agentIds.add(a.id);
-      }
-    } catch {}
-    try {
-      for (const d of fs.readdirSync(`${CONFIG_DIR}/agents`)) agentIds.add(d);
-    } catch {}
-
-    let anyRefreshed = false;
-    const seen = new Set();
-    for (const agentId of agentIds) {
-      const result = tryRefreshAgent(agentId, seen);
-      if (result === 'refreshed') anyRefreshed = true;
-    }
-    if (anyRefreshed) finalizeAuth(); // import refreshed tokens into SQLite + restart
-  } catch (e) {
-    console.error(`[OAuth] Auto-refresh job error: ${e.message}`);
-  }
-}, 5 * 60 * 1000);
+// ChatGPT OAuth do OpenClaw tu quan ly (dashboard: Codex login) — mgmt khong tu refresh
+// token nua (refresh chong len OpenClaw -> token bi xoay vong + doctor dung gateway ~1 phut).
 
 
 ensureRealConfigDir();
