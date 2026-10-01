@@ -52,7 +52,7 @@ Tất cả chạy trực tiếp trên OS, quản lý bằng **systemd**:
 | Service | Binary | Port | Mô tả |
 |---------|--------|------|-------|
 | `openclaw.service` | `openclaw` (npm) | 18789 | AI Gateway + Control UI |
-| `caddy.service` | `caddy` (apt) | 80, 443 | Reverse proxy + SSL |
+| `caddy.service` | `caddy` (.deb GitHub release) | 80, 443 | Reverse proxy + SSL |
 | `openclaw-mgmt.service` | `node server.js` | 9998 | REST API quản lý |
 
 ### Cấu trúc thư mục trên VPS
