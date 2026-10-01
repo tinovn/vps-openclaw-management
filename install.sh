@@ -368,9 +368,7 @@ cat > /etc/openclaw/config/anthropic.json << 'CONFIGEOF'
     "trustedProxies": ["127.0.0.1", "::1", "172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
-      "allowInsecureAuth": true,
-      "dangerouslyAllowHostHeaderOriginFallback": true,
-      "dangerouslyDisableDeviceAuth": false
+      "dangerouslyAllowHostHeaderOriginFallback": true
     }
   },
   "browser": {
@@ -404,9 +402,7 @@ cat > /etc/openclaw/config/openai.json << 'CONFIGEOF'
     "trustedProxies": ["127.0.0.1", "::1", "172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
-      "allowInsecureAuth": true,
-      "dangerouslyAllowHostHeaderOriginFallback": true,
-      "dangerouslyDisableDeviceAuth": false
+      "dangerouslyAllowHostHeaderOriginFallback": true
     }
   },
   "browser": {
@@ -440,9 +436,7 @@ cat > /etc/openclaw/config/google.json << 'CONFIGEOF'
     "trustedProxies": ["127.0.0.1", "::1", "172.16.0.0/12", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
-      "allowInsecureAuth": true,
-      "dangerouslyAllowHostHeaderOriginFallback": true,
-      "dangerouslyDisableDeviceAuth": false
+      "dangerouslyAllowHostHeaderOriginFallback": true
     }
   },
   "browser": {
@@ -543,9 +537,12 @@ done
 
 # Khoi tao auth store (SQLite) + nap credential tu auth-profiles.json neu co.
 # OpenClaw 2026.6.x doc credential tu openclaw-agent.sqlite, doctor se import.
+# OpenClaw >= 2026.9: doctor can giu rieng state DB -> phai dung gateway truoc.
 log "Khoi tao auth store..."
+systemctl stop openclaw
 HOME=${INSTALL_DIR} $(which openclaw) doctor --fix --yes --non-interactive >/dev/null 2>&1 || \
     log "Canh bao: doctor --fix chua chay duoc (se chay lai khi cau hinh provider)."
+systemctl start openclaw
 
 # =============================================================================
 # 13. Cai dat Management API

@@ -1168,12 +1168,24 @@ function applyOAuthModel(model) {
 // This is how written auth-profiles.json gets loaded into the SQLite auth store.
 const DOCTOR_CMD = 'doctor --fix --yes --non-interactive';
 
+// OpenClaw >= 2026.9: doctor can giu rieng state DB, gateway dang chay ->
+// GatewayStateOwnerContentionError ("state database is busy"), credential ket o
+// auth-profiles.json. Dung gateway truoc, luon start lai (ke ca khi doctor loi).
+function doctorFix() {
+  try { systemctl('stop', OPENCLAW_SERVICE, 60000); } catch {}
+  try {
+    return openclawExec(DOCTOR_CMD, 120000);
+  } finally {
+    try { systemctl('start', OPENCLAW_SERVICE, 60000); } catch {}
+  }
+}
+
 // Migrate the JSON auth profiles we wrote into OpenClaw's SQLite auth store.
 // OpenClaw 2026.6.x reads credentials from openclaw-agent.sqlite at runtime, NOT
 // from auth-profiles.json, so doctor must import them. Returns true on success.
 function migrateAuthToSqlite() {
   try {
-    const out = openclawExec(DOCTOR_CMD, 120000);
+    const out = doctorFix();
     console.log('[OAuth] doctor migrate:', out.slice(-1500));
     return true;
   } catch (e) {
@@ -1182,11 +1194,10 @@ function migrateAuthToSqlite() {
   }
 }
 
-// After writing tokens to auth-profiles.json, import them into SQLite then restart
-// OpenClaw so it picks up the new credentials. Shared by all OAuth completion paths.
+// After writing tokens to auth-profiles.json, import them into SQLite; doctorFix()
+// starts OpenClaw again so it picks up the new credentials. Shared by all OAuth paths.
 function finalizeAuth() {
   migrateAuthToSqlite();
-  restartService(OPENCLAW_SERVICE);
 }
 
 // Background poll loop for a device-code session. Drives one session to terminal
@@ -2302,7 +2313,7 @@ const server = http.createServer(async (req, res) => {
           p.models.push({ id: modelId, name: modelName || modelId });
         }
       }
-      tpl.gateway = { mode: 'local', bind: 'lan', auth: { token: '${OPENCLAW_GATEWAY_TOKEN}' }, trustedProxies: ['127.0.0.1', '::1', '172.16.0.0/12', '10.0.0.0/8', '192.168.0.0/16'], controlUi: { enabled: true, allowInsecureAuth: true, dangerouslyAllowHostHeaderOriginFallback: true, dangerouslyDisableDeviceAuth: false } };
+      tpl.gateway = { mode: 'local', bind: 'lan', auth: { token: '${OPENCLAW_GATEWAY_TOKEN}' }, trustedProxies: ['127.0.0.1', '::1', '172.16.0.0/12', '10.0.0.0/8', '192.168.0.0/16'], controlUi: { enabled: true, dangerouslyAllowHostHeaderOriginFallback: true } };
       tpl.browser = { headless: true, defaultProfile: 'openclaw', noSandbox: true };
 
       fs.writeFileSync(tplPath, JSON.stringify(tpl, null, 2), 'utf8');
@@ -2962,13 +2973,13 @@ const server = http.createServer(async (req, res) => {
         let migrated = false;
         if (liveConfig.gateway) {
           if (!liveConfig.gateway.controlUi) {
-            liveConfig.gateway.controlUi = { enabled: true, allowInsecureAuth: true, dangerouslyAllowHostHeaderOriginFallback: true, dangerouslyDisableDeviceAuth: false };
+            liveConfig.gateway.controlUi = { enabled: true, dangerouslyAllowHostHeaderOriginFallback: true };
             migrated = true;
           } else {
+            // allowInsecureAuth / dangerouslyDisableDeviceAuth: OpenClaw >= 2026.9 bao "Unrecognized key"
+            // -> gateway crash (exit 78). Khong them lai; `doctor --fix` tu go tren ban moi.
             const ui = liveConfig.gateway.controlUi;
-            if (!ui.allowInsecureAuth) { ui.allowInsecureAuth = true; migrated = true; }
             if (!ui.dangerouslyAllowHostHeaderOriginFallback) { ui.dangerouslyAllowHostHeaderOriginFallback = true; migrated = true; }
-            if (ui.dangerouslyDisableDeviceAuth === true) { ui.dangerouslyDisableDeviceAuth = false; migrated = true; }
           }
           // Ensure 127.0.0.1 and ::1 in trustedProxies (needed for host network mode)
           const tp = liveConfig.gateway.trustedProxies || [];
@@ -3741,7 +3752,7 @@ const server = http.createServer(async (req, res) => {
       let output = '';
       let ok = true;
       try {
-        output = openclawExec(DOCTOR_CMD, 120000);
+        output = doctorFix();
       } catch (e) {
         ok = false;
         output = (e.stdout ? e.stdout.toString() : '') + (e.stderr ? e.stderr.toString() : '') || e.message;
