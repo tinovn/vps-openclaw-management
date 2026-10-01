@@ -326,6 +326,37 @@ function getAgentSqlitePath(agentId) {
   return `${getAgentAuthDir(agentId)}/openclaw-agent.sqlite`;
 }
 
+// OpenClaw >= 2026.9: doctor nap auth-profiles.json vao store DUNG CHUNG
+// state/openclaw.sqlite, bang config_machine_state, state_key 'authProfiles.store'
+// (auth_profile_store cua agent con rong). Chi doc (read-only); xoa qua CLI.
+function readSharedProfiles() {
+  const dbPath = `${CONFIG_DIR}/state/openclaw.sqlite`;
+  if (!fs.existsSync(dbPath)) return {};
+  let db;
+  try {
+    const { DatabaseSync } = require('node:sqlite');
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    const row = db.prepare("SELECT value_json FROM config_machine_state WHERE state_key = 'authProfiles.store'").get();
+    return (row && JSON.parse(row.value_json).profiles) || {};
+  } catch {
+    return {};
+  } finally {
+    try { if (db) db.close(); } catch {}
+  }
+}
+
+// Go profile khoi store dung chung bang `openclaw models auth logout` (gateway dang
+// chay van chay duoc). match(id, profile) chon profile can go. Tra ve so profile da go.
+function logoutSharedProfiles(agentId, match) {
+  const q = s => `'${String(s).replace(/'/g, "'\\''")}'`;
+  let removed = 0;
+  for (const [id, p] of Object.entries(readSharedProfiles())) {
+    if (!match(id, p)) continue;
+    try { openclawExec(`models auth logout ${q(id)} --yes --agent ${q(agentId)}`, 60000); removed++; } catch {}
+  }
+  return removed;
+}
+
 // Remove all profiles for a provider directly from the SQLite auth store.
 // `openclaw doctor` MERGES auth-profiles.json into SQLite (never prunes), so
 // deleting a key from JSON alone leaves it live in SQLite. This closes that gap.
@@ -364,15 +395,17 @@ function removeProviderFromSqlite(agentId, providerName) {
 // JSON, so the JSON file alone is not a reliable source of "what is connected".
 // Returns a flat { profileKey: profile } map, or null if SQLite is unavailable.
 function readSqliteProfiles(agentId) {
+  const shared = readSharedProfiles();
+  const sharedOrNull = Object.keys(shared).length ? shared : null;
   const dbPath = getAgentSqlitePath(agentId);
-  if (!fs.existsSync(dbPath)) return null;
+  if (!fs.existsSync(dbPath)) return sharedOrNull;
   let DatabaseSync;
   try { ({ DatabaseSync } = require('node:sqlite')); }
   catch { return null; } // Node < 22.5
   const db = new DatabaseSync(dbPath);
   try {
     const rows = db.prepare('SELECT store_key, store_json FROM auth_profile_store').all();
-    const merged = {};
+    const merged = { ...shared }; // profile rieng cua agent de len store dung chung
     for (const row of rows) {
       let store;
       try { store = JSON.parse(row.store_json); } catch { continue; }
@@ -380,7 +413,7 @@ function readSqliteProfiles(agentId) {
     }
     return merged;
   } catch {
-    return null;
+    return sharedOrNull;
   } finally {
     try { db.close(); } catch {}
   }
@@ -484,6 +517,8 @@ function removeAgentApiKey(agentId, providerName) {
   }
   // 2. Remove from SQLite (doctor merges, never prunes — must delete here).
   try { removeProviderFromSqlite(agentId, providerName); } catch {}
+  // 3. Store dung chung (OpenClaw >= 2026.9).
+  try { logoutSharedProfiles(agentId, (id, p) => p && p.provider === providerName); } catch {}
 }
 
 // Backward-compatible wrappers (default to 'main' agent)
@@ -1115,30 +1150,6 @@ function listOAuthProfiles(agentId = 'main') {
 
 function getOAuthProfile(agentId = 'main') {
   return listOAuthProfiles(agentId)[0] || null;
-}
-
-// Attempt to refresh tokens for a single agent. Returns 'refreshed' | 'skipped' | 'error'
-function tryRefreshAgent(agentId) {
-  try {
-    const profile = getOAuthProfile(agentId);
-    if (!profile || !profile.refresh) return 'skipped';
-
-    const now = Date.now();
-    // expires is in milliseconds; refresh if < 10 min remaining or expired
-    const needsRefresh = !profile.expires || (profile.expires - now) < 600000;
-    if (!needsRefresh) return 'skipped';
-
-    const tokens = refreshOAuthToken(profile.refresh);
-    if (!tokens || !tokens.access) return 'error';
-
-    storeOAuthTokens(tokens, agentId);
-    const remaining = tokens.expires ? Math.round((tokens.expires - Date.now()) / 1000) : '?';
-    console.log(`[OAuth] Refreshed token for agent "${agentId}" (expires in ${remaining}s)`);
-    return 'refreshed';
-  } catch (e) {
-    console.error(`[OAuth] Auto-refresh failed for agent "${agentId}": ${e.message}`);
-    return 'error';
-  }
 }
 
 // Cleanup expired OAuth sessions
@@ -3726,6 +3737,7 @@ const server = http.createServer(async (req, res) => {
       // 2. Remove from SQLite (live runtime store).
       let removedFromSqlite = 0;
       try { removedFromSqlite = removeProfileKeysFromSqlite(agentId, targetKeys); } catch {}
+      try { removedFromSqlite += logoutSharedProfiles(agentId, id => targetKeys.includes(id)); } catch {}
 
       // 3. Restart so OpenClaw reloads without the revoked tokens.
       try { restartService(OPENCLAW_SERVICE); } catch {}
@@ -4076,33 +4088,8 @@ try {
   }
 } catch {}
 
-// =============================================================================
-// Auto-refresh OAuth tokens background job (runs every 5 minutes)
-// =============================================================================
-setInterval(() => {
-  try {
-    // Collect all known agent IDs from config + scan agents dir
-    const agentIds = new Set(['main']);
-    try {
-      const config = JSON.parse(fs.readFileSync(`${CONFIG_DIR}/openclaw.json`, 'utf8'));
-      for (const a of (config?.agents?.list || [])) {
-        if (a.id) agentIds.add(a.id);
-      }
-    } catch {}
-    try {
-      for (const d of fs.readdirSync(`${CONFIG_DIR}/agents`)) agentIds.add(d);
-    } catch {}
-
-    let anyRefreshed = false;
-    for (const agentId of agentIds) {
-      const result = tryRefreshAgent(agentId);
-      if (result === 'refreshed') anyRefreshed = true;
-    }
-    if (anyRefreshed) finalizeAuth(); // import refreshed tokens into SQLite + restart
-  } catch (e) {
-    console.error(`[OAuth] Auto-refresh job error: ${e.message}`);
-  }
-}, 5 * 60 * 1000);
+// ChatGPT OAuth do OpenClaw tu quan ly (dashboard: Codex login) — mgmt khong tu refresh
+// token nua (refresh chong len OpenClaw -> token bi xoay vong + doctor dung gateway ~1 phut).
 
 
 ensureRealConfigDir();
