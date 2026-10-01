@@ -141,6 +141,9 @@ apt_retry() {
 }
 
 apt_retry dpkg --force-confdef --force-confold --configure -a
+# Repo Cloudsmith cua Caddy ky InRelease bang subkey da het han (EXPKEYSIG 531A6B20FA058A70)
+# -> apt-get update loi. Go repo con sot tu lan cai truoc.
+rm -f /etc/apt/sources.list.d/caddy-stable.list /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 apt_retry apt-get -qqy update
 apt_retry apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' full-upgrade
 apt_retry apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' install \
@@ -175,15 +178,18 @@ fi
 log "Chrome version: $(google-chrome --version 2>/dev/null || echo 'not installed')"
 
 # =============================================================================
-# 6. Cai dat Caddy (apt)
+# 6. Cai dat Caddy (.deb tu GitHub release, kiem sha512)
 # =============================================================================
 log "Cai dat Caddy..."
 if ! command -v caddy &>/dev/null; then
-    apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
-    apt-get update
-    apt-get install -y caddy
+    # Pin version; bump CADDY_VERSION khi can ban moi
+    CADDY_VERSION="2.11.4"
+    CADDY_DEB="caddy_${CADDY_VERSION}_linux_amd64.deb"
+    CADDY_URL="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}"
+    curl -fsSL "${CADDY_URL}/${CADDY_DEB}" -o "/tmp/${CADDY_DEB}"
+    curl -fsSL "${CADDY_URL}/caddy_${CADDY_VERSION}_checksums.txt" | grep " ${CADDY_DEB}$" | (cd /tmp && sha512sum -c -)
+    apt-get install -y "/tmp/${CADDY_DEB}"
+    rm -f "/tmp/${CADDY_DEB}"
 fi
 log "Caddy version: $(caddy version 2>/dev/null || echo 'unknown')"
 

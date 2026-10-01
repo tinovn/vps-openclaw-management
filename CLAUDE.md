@@ -31,7 +31,7 @@ Internet
 | Thanh phan | Binary | Service | Port | Muc dich |
 |------------|--------|---------|------|----------|
 | OpenClaw | `openclaw` (npm global) | `openclaw.service` | 18789 | AI Gateway + Control UI |
-| Caddy | `caddy` (apt) | `caddy.service` | 80, 443 | Reverse proxy + SSL |
+| Caddy | `caddy` (.deb GitHub release) | `caddy.service` | 80, 443 | Reverse proxy + SSL |
 | Management API | `node server.js` | `openclaw-mgmt.service` | 9998 | REST API quan ly tu xa |
 
 ## Duong dan quan trong
@@ -77,7 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/tinovn/vps-openclaw-management/main
 Qua trinh cai dat:
 1. Cap nhat OS, cai `jq`, `ufw`, `fail2ban`
 2. Cai Node.js 24, `npm install -g openclaw@latest`
-3. Cai Caddy qua apt
+3. Cai Caddy tu GitHub release (.deb, kiem sha512)
 4. Sinh tokens, tao `.env`
 5. Tao systemd services, start
 6. Auto-approve devices
@@ -220,6 +220,16 @@ systemctl start openclaw
 
 Management API tu chay buoc nay khi khoi dong va truoc `/api/upgrade`
 (`ensureRealConfigDir`), nen `POST /api/self-update` cung sua duoc.
+
+### `apt-get update` loi EXPKEYSIG 531A6B20FA058A70 (repo Caddy)
+
+Repo Cloudsmith cua Caddy ky InRelease bang subkey da het han. VPS cai truoc ban
+sua van con repo nay → moi lan `apt-get update` deu loi. Go repo (Caddy da cai van chay):
+
+```bash
+rm -f /etc/apt/sources.list.d/caddy-stable.list /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+apt-get update
+```
 
 ### Caddy loi SSL
 
