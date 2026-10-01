@@ -537,9 +537,12 @@ done
 
 # Khoi tao auth store (SQLite) + nap credential tu auth-profiles.json neu co.
 # OpenClaw 2026.6.x doc credential tu openclaw-agent.sqlite, doctor se import.
+# OpenClaw >= 2026.9: doctor can giu rieng state DB -> phai dung gateway truoc.
 log "Khoi tao auth store..."
+systemctl stop openclaw
 HOME=${INSTALL_DIR} $(which openclaw) doctor --fix --yes --non-interactive >/dev/null 2>&1 || \
     log "Canh bao: doctor --fix chua chay duoc (se chay lai khi cau hinh provider)."
+systemctl start openclaw
 
 # =============================================================================
 # 13. Cai dat Management API

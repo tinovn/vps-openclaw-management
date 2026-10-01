@@ -360,6 +360,8 @@ Device-code flow (verified OpenClaw 2026.6.8): `POST auth.openai.com/api/account
 
 **Quan trong — Auth store la SQLite:** OpenClaw 2026.6.x doc credential tu `agents/main/agent/openclaw-agent.sqlite`, KHONG doc `auth-profiles.json` luc runtime. Management API ghi token vao `auth-profiles.json` (key `openai:<email>`, format `{version:1,profiles}`) ROI chay `openclaw doctor --fix --yes --non-interactive` de nap vao SQLite, sau do restart. Tat ca endpoint set credential (OAuth + API key) deu tu dong lam buoc nay (`finalizeAuth`). Sau khi doctor consume `auth-profiles.json` (file thanh rong), trang thai that nam o SQLite — vi vay `getOAuthProfile`/`/status` doc GOP JSON + SQLite (`readSqliteProfiles`/`readAllProfiles`), neu khong badge se bao "chua ket noi" du token van usable.
 
+**OpenClaw >= 2026.9:** auth store chuyen sang `~/.openclaw/state/openclaw.sqlite` (xem `openclaw models auth list`). `doctor --fix` phai giu rieng state DB — gateway dang chay thi loi `GatewayStateOwnerContentionError` ("state database is busy"), credential ket o `auth-profiles.json` (UI bao "Chua cau hinh thong tin xac thuc", Codex login bao "requires legacy credential migration"). `doctorFix()` dung gateway → doctor (~1 phut) → start lai; moi duong goi doctor deu qua ham nay.
+
 **Diagnostics**
 
 | Method | Path | Mo ta |
