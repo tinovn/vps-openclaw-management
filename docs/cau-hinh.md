@@ -141,7 +141,7 @@ File cấu hình: `/opt/openclaw/config/openclaw.json`
     "trustedProxies": ["127.0.0.1/32", "10.0.0.0/8", "192.168.0.0/16"],
     "controlUi": {
       "enabled": true,
-      "allowInsecureAuth": true
+      "dangerouslyAllowHostHeaderOriginFallback": true
     }
   }
 }
@@ -154,7 +154,9 @@ File cấu hình: `/opt/openclaw/config/openclaw.json`
 | `auth.token` | Token xác thực | Sinh tự động (64-char hex) |
 | `trustedProxies` | Dải IP được tin cậy (Caddy proxy) | Localhost + private networks |
 | `controlUi.enabled` | Bật/tắt giao diện web | `true` |
-| `controlUi.allowInsecureAuth` | Bỏ qua device pairing | `true` |
+| `controlUi.dangerouslyAllowHostHeaderOriginFallback` | Cho phép origin theo Host header (truy cập bằng IP/domain qua Caddy) | `true` |
+
+> OpenClaw >= 2026.9 đã bỏ `controlUi.allowInsecureAuth` và `controlUi.dangerouslyDisableDeviceAuth` — còn trong config là gateway báo "Unrecognized key" và không khởi động (exit 78). Control UI qua HTTP vẫn ghép cặp thiết bị bình thường (Management API tự approve qua `/pair`). Sửa config cũ: `HOME=/opt/openclaw openclaw doctor --fix --yes --non-interactive && systemctl restart openclaw`.
 
 ---
 
